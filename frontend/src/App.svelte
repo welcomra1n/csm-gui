@@ -4,15 +4,25 @@
   import SessionBrowser from "./lib/SessionBrowser.svelte";
   import Terminal from "./lib/Terminal.svelte";
   import Preview from "./lib/Preview.svelte";
-  import { tabs, activeTabId, statusText } from "./lib/store";
+  import { tabs, activeTabId, statusText, fontSize } from "./lib/store";
 
   function handleKey(e: KeyboardEvent) {
-    if (e.ctrlKey && (e.key === "w" || e.key === "W")) {
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && (e.key === "w" || e.key === "W")) {
       const id = $activeTabId;
       if (id) {
         e.preventDefault();
         tabs.update((arr) => arr.filter((t) => t.id !== id));
       }
+    } else if (mod && (e.key === "+" || e.key === "=")) {
+      e.preventDefault();
+      fontSize.update((v) => Math.min(v + 1, 32));
+    } else if (mod && e.key === "-") {
+      e.preventDefault();
+      fontSize.update((v) => Math.max(v - 1, 8));
+    } else if (mod && e.key === "0") {
+      e.preventDefault();
+      fontSize.set(13);
     }
   }
 
@@ -22,9 +32,10 @@
   });
 
   $: activeTab = $tabs.find((t) => t.id === $activeTabId);
+  $: rootStyle = `font-size: ${$fontSize}px;`;
 </script>
 
-<div class="app">
+<div class="app" style={rootStyle}>
   <aside class="left">
     <TabSidebar />
   </aside>
@@ -37,8 +48,13 @@
     {/each}
     {#if !activeTab}
       <div class="placeholder">
-        <div>오른쪽에서 세션을 선택하세요</div>
-        <div class="hint">Ctrl+W: 탭 닫기</div>
+        <pre class="ascii">  ____ ____  __  __
+ / ___/ ___||  \/  |
+| |   \___ \| |\/| |
+| |___ ___) | |  | |
+ \____|____/|_|  |_|</pre>
+        <div class="hint">우측 패널에서 세션 선택</div>
+        <div class="hint dim">Ctrl+W 닫기 · Ctrl+/- 줌 · Ctrl+0 리셋</div>
       </div>
     {/if}
   </main>
@@ -52,32 +68,38 @@
     </div>
   </aside>
 
-  <div class="statusbar">{$statusText || `${$tabs.length}개 탭 열림`}</div>
+  <div class="statusbar">
+    <span class="dot"></span>
+    <span>{$statusText || `${$tabs.length} tabs`}</span>
+    <span class="spacer"></span>
+    <span class="zoom">{$fontSize}px</span>
+  </div>
 </div>
 
 <style>
   .app {
     display: grid;
-    grid-template-columns: 220px 1fr 280px;
-    grid-template-rows: 1fr 22px;
+    grid-template-columns: 200px 1fr 260px;
+    grid-template-rows: 1fr 20px;
     grid-template-areas:
       "left center right"
       "status status status";
     height: 100vh;
     width: 100vw;
+    background: var(--bg);
   }
 
   .left {
     grid-area: left;
-    background: #1f1f23;
-    border-right: 1px solid #2a2a2e;
+    background: var(--bg-elev);
+    border-right: 1px solid var(--border);
     overflow: hidden;
   }
 
   .center {
     grid-area: center;
     position: relative;
-    background: #1b1b1f;
+    background: var(--bg);
     overflow: hidden;
   }
 
@@ -85,15 +107,15 @@
     grid-area: right;
     display: flex;
     flex-direction: column;
-    background: #1f1f23;
-    border-left: 1px solid #2a2a2e;
+    background: var(--bg-elev);
+    border-left: 1px solid var(--border);
     overflow: hidden;
   }
 
   .right-top {
     flex: 2;
     overflow: hidden;
-    border-bottom: 1px solid #2a2a2e;
+    border-bottom: 1px solid var(--border);
   }
 
   .right-bottom {
@@ -118,22 +140,52 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: #555;
     gap: 12px;
   }
 
+  .ascii {
+    color: var(--fg);
+    text-shadow: 0 0 8px var(--fg-mute);
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
   .hint {
+    color: var(--fg-dim);
+    font-size: 12px;
+  }
+
+  .hint.dim {
+    color: var(--fg-mute);
     font-size: 11px;
-    color: #444;
   }
 
   .statusbar {
     grid-area: status;
-    background: #18181b;
-    border-top: 1px solid #2a2a2e;
-    padding: 0 12px;
-    line-height: 22px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-elev);
+    border-top: 1px solid var(--border);
+    padding: 0 10px;
+    line-height: 20px;
     font-size: 11px;
-    color: #888;
+    color: var(--fg-dim);
+  }
+
+  .statusbar .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--fg);
+    box-shadow: 0 0 4px var(--fg);
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .zoom {
+    color: var(--fg-mute);
   }
 </style>

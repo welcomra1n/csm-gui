@@ -6,6 +6,7 @@
   import "@xterm/xterm/css/xterm.css";
   import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime.js";
   import { WritePty, ResizePty } from "../../wailsjs/go/main/App.js";
+  import { fontSize } from "./store";
 
   export let tabId: string;
 
@@ -29,16 +30,42 @@
   }
 
   onMount(() => {
+    let currentFontSize = 13;
+    fontSize.subscribe((v) => {
+      currentFontSize = v;
+      if (term) {
+        term.options.fontSize = v;
+        doResize();
+      }
+    });
+
     term = new Terminal({
       fontFamily:
         '"D2Coding", Menlo, Monaco, "Courier New", monospace, "Apple Color Emoji", "Segoe UI Emoji"',
-      fontSize: 13,
+      fontSize: currentFontSize,
       lineHeight: 1.2,
       theme: {
-        background: "#1b1b1f",
-        foreground: "#e6e6e6",
-        cursor: "#4a9eff",
-        selectionBackground: "#3a4858",
+        background: "#000000",
+        foreground: "#00ff66",
+        cursor: "#00ff66",
+        cursorAccent: "#000000",
+        selectionBackground: "#00663a",
+        black: "#000000",
+        red: "#ff4d8b",
+        green: "#00ff66",
+        yellow: "#ffd60a",
+        blue: "#4a9eff",
+        magenta: "#d976ff",
+        cyan: "#10e0d0",
+        white: "#cccccc",
+        brightBlack: "#444444",
+        brightRed: "#ff7eb6",
+        brightGreen: "#88ff88",
+        brightYellow: "#ffe66d",
+        brightBlue: "#7ec0ff",
+        brightMagenta: "#e9a6ff",
+        brightCyan: "#7dffff",
+        brightWhite: "#ffffff",
       },
       cursorBlink: true,
       scrollback: 10000,
@@ -96,8 +123,8 @@
   .term-container {
     width: 100%;
     height: 100%;
-    padding: 8px;
-    background: #1b1b1f;
+    padding: 6px;
+    background: #000;
     overflow: hidden;
   }
 

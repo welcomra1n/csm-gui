@@ -15,31 +15,23 @@
       console.error("kill pty:", err);
     }
     tabs.update((arr) => arr.filter((t) => t.id !== id));
-    activeTabId.update((cur) => {
-      if (cur === id) {
-        const list = (window as any).__tabs__ as any[];
-        return list && list.length ? list[0].id : null;
-      }
-      return cur;
-    });
   }
-
-  $: tabList = $tabs;
-  $: (window as any).__tabs__ = tabList;
 </script>
 
-<div class="tabsidebar">
-  <div class="header">열린 세션 ({tabList.length})</div>
-  {#if tabList.length === 0}
-    <div class="empty">세션을 열어주세요</div>
+<div class="sidebar">
+  <div class="header">SESSIONS · {$tabs.length}</div>
+  {#if $tabs.length === 0}
+    <div class="empty">no open sessions</div>
   {:else}
-    {#each tabList as tab (tab.id)}
+    {#each $tabs as tab, i (tab.id)}
       <button
         class="tab"
         class:active={$activeTabId === tab.id}
+        class:codex={tab.provider === "codex"}
         on:click={() => selectTab(tab.id)}
       >
-        <span class="icon"><ProviderIcon provider={tab.provider || "claude"} /></span>
+        <span class="num">{String(i + 1).padStart(2, "0")}</span>
+        <span class="icon"><ProviderIcon provider={tab.provider || "claude"} size={12} /></span>
         <span class="title" title={tab.title}>{tab.title}</span>
         <span class="close" on:click={(e) => closeTab(e, tab.id)}>×</span>
       </button>
@@ -48,7 +40,7 @@
 </div>
 
 <style>
-  .tabsidebar {
+  .sidebar {
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -56,45 +48,58 @@
   }
 
   .header {
-    padding: 8px 12px;
-    font-size: 11px;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid #2a2a2e;
+    padding: 6px 10px;
+    font-size: 10px;
+    color: var(--fg-mute);
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
   }
 
   .empty {
-    padding: 16px 12px;
-    color: #555;
-    font-size: 12px;
+    padding: 14px 10px;
+    color: var(--fg-mute);
+    font-size: 11px;
     text-align: center;
   }
 
   .tab {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
-    padding: 8px 12px;
+    padding: 5px 10px;
     text-align: left;
     border-left: 2px solid transparent;
-    color: #aaa;
+    color: var(--fg-dim);
+    font-size: 12px;
   }
 
   .tab:hover {
-    background: #232328;
-    color: #e6e6e6;
+    background: var(--bg-hover);
+    color: var(--fg);
   }
 
   .tab.active {
-    background: #2a2a2e;
-    color: #e6e6e6;
-    border-left-color: #4a9eff;
+    background: var(--bg-hover);
+    color: var(--fg);
+    border-left-color: var(--fg);
+    box-shadow: inset 0 0 8px rgba(0, 255, 102, 0.05);
+  }
+
+  .num {
+    color: var(--fg-mute);
+    font-size: 10px;
+    width: 16px;
   }
 
   .icon {
     flex: 0 0 auto;
+    color: var(--accent-claude);
+    display: flex;
+  }
+
+  .tab.codex .icon {
+    color: var(--accent-codex);
   }
 
   .title {
@@ -102,15 +107,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 12px;
   }
 
   .close {
     flex: 0 0 auto;
     opacity: 0;
-    color: #888;
+    color: var(--fg-mute);
     padding: 0 4px;
-    border-radius: 3px;
+    border-radius: 2px;
   }
 
   .tab:hover .close {
@@ -118,7 +122,7 @@
   }
 
   .close:hover {
-    background: #444;
-    color: #fff;
+    background: var(--accent-action);
+    color: var(--bg);
   }
 </style>

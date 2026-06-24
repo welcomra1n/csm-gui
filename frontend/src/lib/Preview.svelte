@@ -13,25 +13,30 @@
 
 <div class="preview">
   {#if selected}
-    <div class="row title">
-      <ProviderIcon provider={selected.provider} size={14} />
+    <div class="row title" class:codex={selected.provider === "codex"}>
+      <ProviderIcon provider={selected.provider} size={12} />
       <span>{selected.alias || selected.projectName}</span>
     </div>
     {#if selected.alias && selected.projectName !== selected.alias}
-      <div class="row sub">{selected.projectName}</div>
+      <div class="sub">{selected.projectName}</div>
     {/if}
     <div class="meta">
-      <div>{fmtDate(selected.modTime)} · {selected.messageCount}msg</div>
-      {#if selected.gitBranch}<div>⎇ {selected.gitBranch}</div>{/if}
+      <span>{fmtDate(selected.modTime)}</span>
+      <span class="sep">·</span>
+      <span>{selected.messageCount}msg</span>
+      {#if selected.gitBranch}
+        <span class="sep">·</span>
+        <span class="branch">⎇ {selected.gitBranch}</span>
+      {/if}
     </div>
     {#if selected.lastUserMsg}
       <div class="msg">
-        <div class="label">최근 메시지</div>
+        <div class="label">LAST MESSAGE</div>
         <div class="content">{selected.lastUserMsg}</div>
       </div>
     {/if}
   {:else}
-    <div class="empty">세션 선택 시 미리보기</div>
+    <div class="empty">› hover or select a session</div>
   {/if}
 </div>
 
@@ -39,45 +44,53 @@
   .preview {
     height: 100%;
     overflow-y: auto;
-    padding: 10px 12px;
-    font-size: 12px;
+    padding: 8px 10px;
+    font-size: 11px;
   }
 
   .row {
     display: flex;
     align-items: center;
     gap: 6px;
-  }
-
-  .title {
-    color: #e6e6e6;
+    color: var(--accent-claude);
     font-weight: 700;
   }
 
+  .row.codex {
+    color: var(--accent-codex);
+  }
+
   .sub {
-    color: #888;
-    margin: 2px 0 6px 20px;
-    font-size: 11px;
+    color: var(--fg-mute);
+    margin: 2px 0 6px 18px;
+    font-size: 10px;
   }
 
   .meta {
     display: flex;
-    gap: 12px;
-    color: #666;
-    font-size: 11px;
+    gap: 5px;
+    color: var(--fg-mute);
+    font-size: 10px;
     margin: 6px 0 10px;
   }
 
+  .sep {
+    color: var(--border);
+  }
+
+  .branch {
+    color: var(--accent-folder);
+  }
+
   .msg .label {
-    color: #888;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    color: var(--accent-action);
+    font-size: 10px;
+    letter-spacing: 1px;
     margin-bottom: 4px;
   }
 
   .msg .content {
-    color: #c0c0c0;
+    color: var(--fg-dim);
     white-space: pre-wrap;
     word-break: break-word;
     line-height: 1.4;
@@ -86,8 +99,8 @@
   }
 
   .empty {
-    text-align: center;
-    color: #555;
-    padding: 24px 0;
+    color: var(--fg-mute);
+    padding: 16px 0;
+    font-size: 11px;
   }
 </style>

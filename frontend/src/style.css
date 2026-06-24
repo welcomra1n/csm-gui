@@ -12,16 +12,33 @@
     src: url("assets/fonts/D2Coding-Bold.ttf") format("truetype");
 }
 
+:root {
+    --bg: #000000;
+    --bg-elev: #0a0a0a;
+    --bg-hover: #111111;
+    --border: #1a1a1a;
+    --fg: #00ff66;
+    --fg-dim: #00cc52;
+    --fg-mute: #007a31;
+    --accent-claude: #d97757;
+    --accent-codex: #10a37f;
+    --accent-pinned: #ffd60a;
+    --accent-folder: #4a9eff;
+    --accent-action: #ff4d8b;
+    --status: #88ff88;
+}
+
 html, body, #app {
     margin: 0;
     padding: 0;
     height: 100vh;
     width: 100vw;
     overflow: hidden;
-    background-color: #1b1b1f;
-    color: #e6e6e6;
+    background-color: var(--bg);
+    color: var(--fg);
     font-family: "D2Coding", Menlo, Monaco, "Courier New", monospace;
     font-size: 13px;
+    -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -43,4 +60,23 @@ button:focus, input:focus {
 
 input {
     font-family: inherit;
+    color: var(--fg);
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--fg-mute);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--fg-dim);
 }

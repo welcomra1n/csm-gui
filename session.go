@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -675,9 +676,28 @@ func discoverSessionsFast() []*Session {
 
 func discoverSessions() []*Session {
 	out := discoverSessionsFast()
+
+	// Parallel load (8 workers)
+	const workers = 8
+	jobs := make(chan *Session, len(out))
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for s := range jobs {
+				loadSessionDetail(s)
+			}
+		}()
+	}
+	for _, s := range out {
+		jobs <- s
+	}
+	close(jobs)
+	wg.Wait()
+
 	valid := out[:0]
 	for _, s := range out {
-		loadSessionDetail(s)
 		if s.MessageCount > 0 && (s.UserMsgCount > 1 || s.AsstMsgCount > 1) {
 			valid = append(valid, s)
 		}

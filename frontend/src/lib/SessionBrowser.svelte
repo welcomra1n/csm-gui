@@ -103,11 +103,12 @@
 
   <div class="list">
     {#if pinned.length > 0}
-      <div class="group-header">📌 고정 ({pinned.length})</div>
+      <div class="group-header pinned">📌 PINNED · {pinned.length}</div>
       {#each pinned as s (s.id)}
         <button
           class="item"
           class:selected={$selectedSessionId === s.id}
+          class:codex={s.provider === "codex"}
           on:mouseenter={() => selectedSessionId.set(s.id)}
           on:click={() => openSession(s)}
         >
@@ -119,11 +120,12 @@
     {/if}
 
     {#each folders as [folderName, items] (folderName)}
-      <div class="group-header">📁 {folderName} ({items.length})</div>
+      <div class="group-header folder">📁 {folderName.toUpperCase()} · {items.length}</div>
       {#each items as s (s.id)}
         <button
           class="item"
           class:selected={$selectedSessionId === s.id}
+          class:codex={s.provider === "codex"}
           on:mouseenter={() => selectedSessionId.set(s.id)}
           on:click={() => openSession(s)}
         >
@@ -135,11 +137,12 @@
     {/each}
 
     {#if regular.length > 0}
-      <div class="group-header">📂 일반 ({regular.length})</div>
+      <div class="group-header normal">📂 ALL · {regular.length}</div>
       {#each regular as s (s.id)}
         <button
           class="item"
           class:selected={$selectedSessionId === s.id}
+          class:codex={s.provider === "codex"}
           on:mouseenter={() => selectedSessionId.set(s.id)}
           on:click={() => openSession(s)}
         >
@@ -166,30 +169,35 @@
   .searchbox {
     display: flex;
     gap: 4px;
-    padding: 8px;
-    border-bottom: 1px solid #2a2a2e;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
   }
 
   .searchbox input {
     flex: 1;
-    background: #2a2a2e;
-    border: 1px solid #3a3a3e;
-    border-radius: 4px;
-    padding: 4px 8px;
-    color: #e6e6e6;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 3px 6px;
+    color: var(--fg);
     font-size: 12px;
   }
 
+  .searchbox input:focus {
+    border-color: var(--fg-mute);
+  }
+
   .refresh {
-    width: 28px;
-    background: #2a2a2e;
-    border-radius: 4px;
-    color: #aaa;
+    width: 26px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--fg-dim);
   }
 
   .refresh:hover {
-    background: #3a3a3e;
-    color: #e6e6e6;
+    background: var(--bg-hover);
+    color: var(--fg);
   }
 
   .list {
@@ -199,41 +207,54 @@
   }
 
   .group-header {
-    padding: 8px 12px 4px;
-    font-size: 11px;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    padding: 6px 10px 3px;
+    font-size: 10px;
+    letter-spacing: 1px;
   }
+
+  .group-header.pinned { color: var(--accent-pinned); }
+  .group-header.folder { color: var(--accent-folder); }
+  .group-header.normal { color: var(--fg-mute); }
 
   .item {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
-    padding: 6px 12px 6px 28px;
+    padding: 4px 10px 4px 22px;
     text-align: left;
-    color: #c0c0c0;
+    color: var(--fg-dim);
     position: relative;
+    font-size: 12px;
   }
 
   .item::before {
     content: "";
     position: absolute;
-    left: 18px;
+    left: 14px;
     top: 0;
     bottom: 0;
     width: 1px;
-    background: #2a2a2e;
+    background: var(--border);
   }
 
   .item:hover, .item.selected {
-    background: #2a2a2e;
-    color: #e6e6e6;
+    background: var(--bg-hover);
+    color: var(--fg);
+  }
+
+  .item:hover::before, .item.selected::before {
+    background: var(--fg-mute);
   }
 
   .icon {
     flex: 0 0 auto;
+    color: var(--accent-claude);
+    display: flex;
+  }
+
+  .item.codex .icon {
+    color: var(--accent-codex);
   }
 
   .name {
@@ -241,19 +262,18 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 12px;
   }
 
   .time {
     flex: 0 0 auto;
-    color: #666;
-    font-size: 11px;
+    color: var(--fg-mute);
+    font-size: 10px;
   }
 
   .empty {
     text-align: center;
-    color: #555;
-    padding: 24px 12px;
-    font-size: 12px;
+    color: var(--fg-mute);
+    padding: 20px 10px;
+    font-size: 11px;
   }
 </style>
