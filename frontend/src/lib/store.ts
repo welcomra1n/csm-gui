@@ -3,6 +3,29 @@ import type { Session, Tab, SidebarMode } from "./types";
 
 export const tabs = writable<Tab[]>([]);
 export const activeTabId = writable<string | null>(null);
+
+// Persist tab metadata (not the live PTY) so we can re-open them on launch
+tabs.subscribe((arr) => {
+  try {
+    const snap = arr.map((t) => ({
+      sessionId: t.sessionId,
+      title: t.title,
+      provider: t.provider,
+      pinned: t.pinned,
+    }));
+    localStorage.setItem("csm-tabs", JSON.stringify(snap));
+  } catch {}
+});
+
+export function loadSavedTabs(): { sessionId?: string; title: string; provider?: string; pinned?: boolean }[] {
+  try {
+    const raw = localStorage.getItem("csm-tabs");
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
 export const sessions = writable<Session[]>([]);
 export const sidebarMode = writable<SidebarMode>("tabs");
 export const statusText = writable<string>("");

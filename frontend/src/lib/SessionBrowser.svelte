@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { sessions, tabs, activeTabId, nextTabId, statusText, selectedSessionId, focusSearch, startProgress, endProgress } from "./store";
+  import { sessions, tabs, activeTabId, nextTabId, statusText, selectedSessionId, focusSearch, startProgress, endProgress, loadSavedTabs } from "./store";
   import type { Session } from "./types";
   import {
     ListSessions,
@@ -140,7 +140,7 @@
   }
 
   onMount(() => {
-    refresh();
+    refresh().then(() => restoreTabs());
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission().catch(() => {});
     }
@@ -152,6 +152,55 @@
       window.removeEventListener("focus", onFocus);
     };
   });
+
+  let restored = false;
+  async function restoreTabs() {
+    if (restored) return;
+    restored = true;
+    const saved = loadSavedTabs();
+    if (!saved.length) return;
+    // Clear current tabs first (they were rehydrated from localStorage but PTY-less)
+    tabs.set([]);
+    for (const s of saved) {
+      try {
+        const tabId = nextTabId();
+        const provider = s.provider || "claude";
+        let cmd: string;
+        let args: string[] = [];
+        if (provider === "codex") {
+          cmd = "codex";
+          args = s.sessionId
+            ? ["resume", s.sessionId, "--sandbox", "danger-full-access"]
+            : ["--sandbox", "danger-full-access"];
+        } else if (provider === "shell") {
+          cmd = navigator.platform.toLowerCase().includes("win") ? "pwsh.exe" : "zsh";
+          args = ["-l"];
+        } else {
+          cmd = "claude";
+          args = s.sessionId
+            ? ["--resume", s.sessionId, "--dangerously-skip-permissions"]
+            : ["--dangerously-skip-permissions"];
+        }
+        const sessionRec = s.sessionId ? $sessions.find((x) => x.id === s.sessionId) : null;
+        const dir = sessionRec?.projectDir || sessionRec?.cwd || "";
+        await StartPty(tabId, cmd, dir, args, 120, 40);
+        tabs.update((arr) => [
+          ...arr,
+          {
+            id: tabId,
+            title: s.title,
+            sessionId: s.sessionId,
+            provider,
+            pinned: s.pinned,
+          },
+        ]);
+        if (!$activeTabId) activeTabId.set(tabId);
+      } catch (e) {
+        console.warn("restore tab:", e);
+      }
+    }
+    statusText.set(`restored ${saved.length} tab${saved.length > 1 ? "s" : ""}`);
+  }
 
   function notify(title: string, body: string) {
     try {
