@@ -83,72 +83,10 @@ jobs:
           draft: false
           prerelease: false
 
-  update-scoop:
-    needs: release
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: Update Scoop manifest
+      - name: Trigger Scoop bucket update
         env:
-          GH_TOKEN: ${{ secrets.CROSS_REPO_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
         run: |
-          VERSION="${GITHUB_REF#refs/tags/}"
-          VERSION_NUM="${VERSION#v}"
-
-          ZIP_PATH=$(find artifacts/ -name 'csm-gui-windows-amd64.zip' | head -1)
-          if [ -z "$ZIP_PATH" ]; then
-            echo "Windows zip not found"; exit 1
-          fi
-          SHA=$(sha256sum "$ZIP_PATH" | awk '{print $1}')
-
-          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${VERSION}"
-
-          MANIFEST=$(cat <<ENDJSON
-          {
-            "version": "${VERSION_NUM}",
-            "description": "GUI session manager for Claude Code + Codex (Wails + xterm.js)",
-            "homepage": "https://github.com/welcomra1n/csm-gui",
-            "license": "MIT",
-            "architecture": {
-              "64bit": {
-                "url": "${BASE_URL}/csm-gui-windows-amd64.zip",
-                "hash": "${SHA}"
-              }
-            },
-            "extract_dir": "",
-            "bin": [["csm.exe", "csm-gui"]],
-            "shortcuts": [["csm.exe", "csm GUI"]],
-            "checkver": "github",
-            "autoupdate": {
-              "architecture": {
-                "64bit": {
-                  "url": "https://github.com/welcomra1n/csm-gui/releases/download/v\$version/csm-gui-windows-amd64.zip"
-                }
-              }
-            }
-          }
-          ENDJSON
-          )
-
-          CONTENT_BASE64=$(echo "${MANIFEST}" | base64 -w0)
-
-          FILE_SHA=$(gh api "repos/welcomra1n/scoop-bucket/contents/bucket/csm-gui.json" \
-            --jq '.sha' 2>/dev/null || echo "")
-
-          if [ -n "${FILE_SHA}" ]; then
-            gh api "repos/welcomra1n/scoop-bucket/contents/bucket/csm-gui.json" \
-              --method PUT \
-              --field message="Update csm-gui to ${VERSION}" \
-              --field content="${CONTENT_BASE64}" \
-              --field sha="${FILE_SHA}"
-          else
-            gh api "repos/welcomra1n/scoop-bucket/contents/bucket/csm-gui.json" \
-              --method PUT \
-              --field message="Add csm-gui manifest at ${VERSION}" \
-              --field content="${CONTENT_BASE64}"
-          fi
+          gh workflow run auto-update.yml --repo welcomra1n/scoop-bucket 2>&1 || \
+            echo "Could not trigger remote workflow; scoop-bucket will pick up the release within 6h via its own cron."
