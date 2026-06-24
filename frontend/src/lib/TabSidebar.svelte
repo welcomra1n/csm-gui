@@ -195,6 +195,7 @@
         class:dragging={draggedId === tab.id}
         class:working={st === "working"}
         class:idle={st === "idle"}
+        class:pinned-tab={tab.pinned}
         draggable="true"
         on:dragstart={(e) => onDragStart(e, tab.id)}
         on:dragover={onDragOver}
@@ -306,11 +307,19 @@
     color: var(--fg-mute);
     font-size: var(--ui-fs-xs);
     width: 16px;
+    flex-shrink: 0;
+    text-align: center;
   }
 
-  .tab :global(.num):has-text("★"),
+  .tab.pinned-tab {
+    border-left-color: var(--accent-pinned);
+    background: rgba(255, 200, 0, 0.05);
+  }
+
   .tab.pinned-tab .num {
     color: var(--accent-pinned);
+    font-size: var(--ui-fs);
+    text-shadow: 0 0 4px var(--accent-pinned);
   }
 
   .state-dot {
