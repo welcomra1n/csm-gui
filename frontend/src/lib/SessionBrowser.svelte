@@ -2,10 +2,24 @@
   import { onMount } from "svelte";
   import { sessions, tabs, activeTabId, nextTabId, statusText, selectedSessionId } from "./store";
   import type { Session } from "./types";
-  import { ListSessions, StartPty } from "../../wailsjs/go/main/App.js";
+  import {
+    ListSessions,
+    StartPty,
+    PinSession,
+    RenameAlias,
+    SetSessionTag,
+    DeleteSession,
+  } from "../../wailsjs/go/main/App.js";
   import ProviderIcon from "./ProviderIcon.svelte";
+  import ContextMenu from "./ContextMenu.svelte";
+  import PromptModal from "./PromptModal.svelte";
 
   let filter = "";
+  let newMenuOpen = false;
+  let ctxMenu: { x: number; y: number; session: Session } | null = null;
+  let modal:
+    | { kind: "rename" | "tag" | "delete"; session: Session; value: string }
+    | null = null;
 
   onMount(async () => {
     await refresh();
@@ -53,6 +67,77 @@
       statusText.set(`open: ${s.projectName}`);
     } catch (e: any) {
       statusText.set(`fail: ${e?.message || e}`);
+    }
+  }
+
+  function openContext(e: MouseEvent, s: Session) {
+    e.preventDefault();
+    selectedSessionId.set(s.id);
+    ctxMenu = { x: e.clientX, y: e.clientY, session: s };
+  }
+
+  function buildMenuItems(s: Session) {
+    return [
+      { label: "rename alias", action: () => (modal = { kind: "rename", session: s, value: s.alias || "" }), key: "F2" },
+      { label: s.pinned ? "unpin" : "pin", action: () => togglePin(s), key: "P" },
+      { label: "edit tags", action: () => (modal = { kind: "tag", session: s, value: (s.tags || []).join(", ") }), key: "T" },
+      { label: "delete", action: () => (modal = { kind: "delete", session: s, value: "" }), danger: true, key: "Del" },
+    ];
+  }
+
+  async function togglePin(s: Session) {
+    try {
+      await PinSession(s.id, !s.pinned);
+      await refresh();
+      statusText.set(`${s.pinned ? "unpinned" : "pinned"}: ${s.projectName}`);
+    } catch (e: any) {
+      statusText.set(`fail: ${e?.message || e}`);
+    }
+  }
+
+  async function confirmModal() {
+    if (!modal) return;
+    const { kind, session, value } = modal;
+    try {
+      if (kind === "rename") {
+        await RenameAlias(session.id, value.trim());
+        statusText.set(`renamed: ${value.trim() || session.projectName}`);
+      } else if (kind === "tag") {
+        const tags = value
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
+        await SetSessionTag(session.id, tags);
+        statusText.set(`tagged: ${tags.length} tag(s)`);
+      } else if (kind === "delete") {
+        await DeleteSession(session.id);
+        statusText.set(`deleted: ${session.projectName}`);
+        // Close any open tab for this session
+        const tab = $tabs.find((t) => t.sessionId === session.id);
+        if (tab) {
+          tabs.update((arr) => arr.filter((t) => t.id !== tab.id));
+        }
+      }
+      modal = null;
+      await refresh();
+    } catch (e: any) {
+      statusText.set(`fail: ${e?.message || e}`);
+    }
+  }
+
+  function handleSessionKey(e: KeyboardEvent, s: Session) {
+    if (e.key === "F2") {
+      e.preventDefault();
+      modal = { kind: "rename", session: s, value: s.alias || "" };
+    } else if (e.key === "p" || e.key === "P") {
+      e.preventDefault();
+      togglePin(s);
+    } else if (e.key === "t" || e.key === "T") {
+      e.preventDefault();
+      modal = { kind: "tag", session: s, value: (s.tags || []).join(", ") };
+    } else if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      modal = { kind: "delete", session: s, value: "" };
     }
   }
 
@@ -137,12 +222,19 @@
   </div>
 
   <div class="new-row">
-    <button class="new-btn claude" on:click={() => newSession("claude")} title="new claude session">
-      <ProviderIcon provider="claude" size={11} /> + new claude
+    <button class="new-btn" on:click={() => (newMenuOpen = !newMenuOpen)} title="new session">
+      + NEW SESSION
     </button>
-    <button class="new-btn codex" on:click={() => newSession("codex")} title="new codex session">
-      <ProviderIcon provider="codex" size={11} /> + new codex
-    </button>
+    {#if newMenuOpen}
+      <div class="new-menu">
+        <button class="menu-item claude" on:click={() => { newMenuOpen = false; newSession("claude"); }}>
+          <ProviderIcon provider="claude" size={12} /> Claude
+        </button>
+        <button class="menu-item codex" on:click={() => { newMenuOpen = false; newSession("codex"); }}>
+          <ProviderIcon provider="codex" size={12} /> Codex
+        </button>
+      </div>
+    {/if}
   </div>
 
   <div class="list">
@@ -153,11 +245,20 @@
           class="item"
           class:selected={$selectedSessionId === s.id}
           class:codex={s.provider === "codex"}
+          class:pinned={s.pinned}
           on:mouseenter={() => selectedSessionId.set(s.id)}
           on:click={() => openSession(s)}
+          on:contextmenu={(e) => openContext(e, s)}
+          on:keydown={(e) => handleSessionKey(e, s)}
         >
+          {#if s.pinned}<span class="pin">★</span>{/if}
           <span class="icon"><ProviderIcon provider={s.provider} /></span>
           <span class="name">{s.alias || s.projectName}</span>
+          {#if s.tags && s.tags.length > 0}
+            <span class="tags">
+              {#each s.tags as t}<span class="tag">#{t}</span>{/each}
+            </span>
+          {/if}
           <span class="time">{fmtTime(s.modTime)}</span>
         </button>
       {/each}
@@ -170,11 +271,20 @@
           class="item"
           class:selected={$selectedSessionId === s.id}
           class:codex={s.provider === "codex"}
+          class:pinned={s.pinned}
           on:mouseenter={() => selectedSessionId.set(s.id)}
           on:click={() => openSession(s)}
+          on:contextmenu={(e) => openContext(e, s)}
+          on:keydown={(e) => handleSessionKey(e, s)}
         >
+          {#if s.pinned}<span class="pin">★</span>{/if}
           <span class="icon"><ProviderIcon provider={s.provider} /></span>
           <span class="name">{s.alias || s.projectName}</span>
+          {#if s.tags && s.tags.length > 0}
+            <span class="tags">
+              {#each s.tags as t}<span class="tag">#{t}</span>{/each}
+            </span>
+          {/if}
           <span class="time">{fmtTime(s.modTime)}</span>
         </button>
       {/each}
@@ -187,21 +297,55 @@
           class="item"
           class:selected={$selectedSessionId === s.id}
           class:codex={s.provider === "codex"}
+          class:pinned={s.pinned}
           on:mouseenter={() => selectedSessionId.set(s.id)}
           on:click={() => openSession(s)}
+          on:contextmenu={(e) => openContext(e, s)}
+          on:keydown={(e) => handleSessionKey(e, s)}
         >
+          {#if s.pinned}<span class="pin">★</span>{/if}
           <span class="icon"><ProviderIcon provider={s.provider} /></span>
           <span class="name">{s.alias || s.projectName}</span>
+          {#if s.tags && s.tags.length > 0}
+            <span class="tags">
+              {#each s.tags as t}<span class="tag">#{t}</span>{/each}
+            </span>
+          {/if}
           <span class="time">{fmtTime(s.modTime)}</span>
         </button>
       {/each}
     {/if}
 
     {#if filtered.length === 0}
-      <div class="empty">세션 없음</div>
+      <div class="empty">no sessions</div>
     {/if}
   </div>
 </div>
+
+{#if ctxMenu}
+  <ContextMenu
+    x={ctxMenu.x}
+    y={ctxMenu.y}
+    items={buildMenuItems(ctxMenu.session)}
+    onClose={() => (ctxMenu = null)}
+  />
+{/if}
+
+{#if modal}
+  <PromptModal
+    title={modal.kind === "rename"
+      ? `Rename: ${modal.session.projectName}`
+      : modal.kind === "tag"
+        ? `Tags (comma-separated): ${modal.session.projectName}`
+        : `Delete "${modal.session.projectName}"?`}
+    bind:value={modal.value}
+    placeholder={modal.kind === "tag" ? "tag1, tag2" : ""}
+    confirmLabel={modal.kind === "delete" ? "DELETE" : "save"}
+    danger={modal.kind === "delete"}
+    onConfirm={confirmModal}
+    onCancel={() => (modal = null)}
+  />
+{/if}
 
 <style>
   .browser {
@@ -245,32 +389,56 @@
   }
 
   .new-row {
-    display: flex;
-    gap: 4px;
+    position: relative;
     padding: 4px 6px 6px;
     border-bottom: 1px solid var(--border);
   }
 
   .new-btn {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 4px;
+    width: 100%;
+    padding: 5px;
     font-size: 10px;
+    letter-spacing: 1px;
     border: 1px solid var(--border);
     border-radius: 2px;
+    color: var(--fg);
+  }
+
+  .new-btn:hover {
+    border-color: var(--fg);
+    box-shadow: 0 0 6px var(--fg-mute);
+  }
+
+  .new-menu {
+    position: absolute;
+    top: 100%;
+    left: 6px;
+    right: 6px;
+    background: var(--bg-elev);
+    border: 1px solid var(--fg-mute);
+    border-radius: 2px;
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  }
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 6px 10px;
+    font-size: 11px;
+    text-align: left;
     color: var(--fg-dim);
   }
 
-  .new-btn.claude:hover {
-    border-color: var(--accent-claude);
+  .menu-item.claude:hover {
+    background: var(--bg-hover);
     color: var(--accent-claude);
   }
 
-  .new-btn.codex:hover {
-    border-color: var(--accent-codex);
+  .menu-item.codex:hover {
+    background: var(--bg-hover);
     color: var(--accent-codex);
   }
 
@@ -329,6 +497,26 @@
 
   .item.codex .icon {
     color: var(--accent-codex);
+  }
+
+  .pin {
+    color: var(--accent-pinned);
+    font-size: 9px;
+    margin-right: -2px;
+  }
+
+  .tags {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+
+  .tag {
+    color: var(--accent-action);
+    font-size: 9px;
+    background: rgba(255, 77, 139, 0.12);
+    padding: 1px 4px;
+    border-radius: 2px;
   }
 
   .name {
