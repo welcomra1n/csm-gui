@@ -37,9 +37,15 @@
         <span class="branch">⎇ {selected.gitBranch}</span>
       {/if}
     </div>
-    {#if selected.lastUserMsg}
+    {#if selected.firstUserMsg}
       <div class="msg">
-        <div class="label">LAST MESSAGE</div>
+        <div class="label">TOPIC</div>
+        <div class="content md">{@html renderMarkdown(selected.firstUserMsg)}</div>
+      </div>
+    {/if}
+    {#if selected.lastUserMsg && selected.lastUserMsg !== selected.firstUserMsg}
+      <div class="msg">
+        <div class="label">RECENT</div>
         <div class="content md">{@html renderMarkdown(selected.lastUserMsg)}</div>
       </div>
     {/if}

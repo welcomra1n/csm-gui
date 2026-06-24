@@ -14,6 +14,13 @@ fontSize.subscribe((v) => localStorage.setItem("csm-fontsize", String(v)));
 
 export const focusSearch = writable<number>(0);
 
+const savedLeftW = parseInt(localStorage.getItem("csm-left-w") || "200", 10);
+const savedRightW = parseInt(localStorage.getItem("csm-right-w") || "260", 10);
+export const leftWidth = writable<number>(isNaN(savedLeftW) ? 200 : savedLeftW);
+export const rightWidth = writable<number>(isNaN(savedRightW) ? 260 : savedRightW);
+leftWidth.subscribe((v) => localStorage.setItem("csm-left-w", String(v)));
+rightWidth.subscribe((v) => localStorage.setItem("csm-right-w", String(v)));
+
 let tabCounter = 0;
 export function nextTabId(): string {
   tabCounter++;

@@ -4,7 +4,7 @@
   import SessionBrowser from "./lib/SessionBrowser.svelte";
   import Terminal from "./lib/Terminal.svelte";
   import Preview from "./lib/Preview.svelte";
-  import { tabs, activeTabId, statusText, fontSize, focusSearch } from "./lib/store";
+  import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth } from "./lib/store";
 
   function handleKey(e: KeyboardEvent) {
     const mod = e.metaKey || e.ctrlKey;
@@ -40,12 +40,50 @@
     document.documentElement.style.setProperty("--ui-fs-sm", `${Math.max($fontSize - 2, 6)}px`);
     document.documentElement.style.setProperty("--ui-fs-xs", `${Math.max($fontSize - 3, 6)}px`);
   }
+
+  let dragSide: "left" | "right" | null = null;
+
+  function startDrag(side: "left" | "right") {
+    dragSide = side;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }
+
+  function onMouseMove(e: MouseEvent) {
+    if (!dragSide) return;
+    if (dragSide === "left") {
+      const w = Math.max(120, Math.min(500, e.clientX));
+      leftWidth.set(w);
+    } else {
+      const w = Math.max(160, Math.min(600, window.innerWidth - e.clientX));
+      rightWidth.set(w);
+    }
+  }
+
+  function onMouseUp() {
+    if (dragSide) {
+      dragSide = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  });
 </script>
 
-<div class="app">
+<div class="app" style="grid-template-columns: {$leftWidth}px 4px 1fr 4px {$rightWidth}px;">
   <aside class="left">
     <TabSidebar />
   </aside>
+
+  <div class="splitter left-split" on:mousedown={() => startDrag("left")}></div>
 
   <main class="center">
     {#each $tabs as tab (tab.id)}
@@ -65,6 +103,8 @@
       </div>
     {/if}
   </main>
+
+  <div class="splitter right-split" on:mousedown={() => startDrag("right")}></div>
 
   <aside class="right">
     <div class="right-top">
@@ -86,20 +126,31 @@
 <style>
   .app {
     display: grid;
-    grid-template-columns: 200px 1fr 260px;
     grid-template-rows: 1fr 20px;
     grid-template-areas:
-      "left center right"
-      "status status status";
+      "left lsplit center rsplit right"
+      "status status status status status";
     height: 100vh;
     width: 100vw;
     background: var(--bg);
   }
 
+  .splitter {
+    background: var(--border-strong);
+    cursor: col-resize;
+  }
+
+  .splitter:hover, .splitter:active {
+    background: var(--fg);
+    box-shadow: 0 0 4px var(--fg-mute);
+  }
+
+  .left-split { grid-area: lsplit; }
+  .right-split { grid-area: rsplit; }
+
   .left {
     grid-area: left;
     background: var(--bg-elev);
-    border-right: 1px solid var(--border-strong);
     overflow: hidden;
   }
 
@@ -115,7 +166,6 @@
     display: flex;
     flex-direction: column;
     background: var(--bg-elev);
-    border-left: 1px solid var(--border-strong);
     overflow: hidden;
   }
 
