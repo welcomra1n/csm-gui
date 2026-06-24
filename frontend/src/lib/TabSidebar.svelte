@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tabs, activeTabId } from "./store";
-  import { KillPty, RenameAlias, GenerateRecap } from "../../wailsjs/go/main/App.js";
+  import { KillPty, RenameAlias, GenerateRecap, DeleteSession } from "../../wailsjs/go/main/App.js";
   import ProviderIcon from "./ProviderIcon.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import PromptModal from "./PromptModal.svelte";
@@ -20,7 +20,7 @@
   }
 
   function buildMenu(tab: Tab) {
-    return [
+    const items: any[] = [
       {
         label: "rename",
         action: () => {
@@ -29,8 +29,30 @@
         },
         key: "F2",
       },
-      { label: "close", action: () => closeTab(new MouseEvent("click"), tab.id), danger: true, key: "Ctrl+W" },
+      { label: "close", action: () => closeTab(new MouseEvent("click"), tab.id), key: "Ctrl+W" },
     ];
+    if (tab.sessionId) {
+      items.push({
+        label: "delete session",
+        action: () => deleteUnderlying(tab),
+        danger: true,
+      });
+    }
+    return items;
+  }
+
+  async function deleteUnderlying(tab: Tab) {
+    try {
+      await KillPty(tab.id);
+    } catch {}
+    if (tab.sessionId) {
+      try {
+        await DeleteSession(tab.sessionId);
+      } catch (e) {
+        console.error("delete session:", e);
+      }
+    }
+    tabs.update((arr) => arr.filter((t) => t.id !== tab.id));
   }
 
   async function confirmRename() {
