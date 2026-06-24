@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func httpGet(url string) ([]byte, error) {
@@ -220,18 +224,57 @@ func (a *App) ApplyUpdate() (string, error) {
 				return "", fmt.Errorf("brew not found in PATH")
 			}
 		}
-		out, err := exec.Command(brew, "upgrade", "--cask", "csm-gui").CombinedOutput()
-		return string(out), err
+		// Refresh tap then upgrade (force handles edge cases)
+		out1, _ := exec.Command(brew, "update").CombinedOutput()
+		out2, err := exec.Command(brew, "reinstall", "--cask", "csm-gui").CombinedOutput()
+		return string(out1) + "\n" + string(out2), err
 	}
 	if runtime.GOOS == "windows" {
 		scoop, err := exec.LookPath("scoop")
 		if err != nil {
 			return "", fmt.Errorf("scoop not found in PATH")
 		}
-		out, err := exec.Command(scoop, "update", "csm-gui").CombinedOutput()
-		return string(out), err
+		out1, _ := exec.Command(scoop, "update").CombinedOutput()
+		out2, err := exec.Command(scoop, "update", "csm-gui").CombinedOutput()
+		return string(out1) + "\n" + string(out2), err
 	}
 	return "", fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+}
+
+// RestartApp relaunches the application after a 1-second delay,
+// then quits the current instance so the package manager's new binary
+// is used on next launch.
+func (a *App) RestartApp() error {
+	if runtime.GOOS == "darwin" {
+		appPath := "/Applications/csm.app"
+		if _, err := os.Stat(appPath); err != nil {
+			// fallback to find via brew cask
+			appPath = ""
+			matches, _ := filepath.Glob("/opt/homebrew/Caskroom/csm-gui/*/csm.app")
+			if len(matches) > 0 {
+				appPath = matches[0]
+			}
+		}
+		if appPath == "" {
+			return fmt.Errorf("could not locate csm.app")
+		}
+		go func() {
+			exec.Command("sh", "-c", "sleep 1 && open '"+appPath+"' &").Start()
+			time.Sleep(200 * time.Millisecond)
+			wruntime.Quit(a.ctx)
+		}()
+		return nil
+	}
+	if runtime.GOOS == "windows" {
+		exe, _ := os.Executable()
+		go func() {
+			exec.Command("cmd", "/c", "timeout 1 && start \"\" \""+exe+"\"").Start()
+			time.Sleep(200 * time.Millisecond)
+			wruntime.Quit(a.ctx)
+		}()
+		return nil
+	}
+	return fmt.Errorf("unsupported platform")
 }
 
 // GetMetadata returns the raw metadata object.

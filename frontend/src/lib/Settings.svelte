@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { AppVersion, CheckUpdate, ApplyUpdate } from "../../wailsjs/go/main/App.js";
+  import { AppVersion, CheckUpdate, ApplyUpdate, RestartApp } from "../../wailsjs/go/main/App.js";
 
   export let onClose: () => void;
 
@@ -11,6 +11,7 @@
   let body = "";
   let checking = false;
   let applying = false;
+  let updated = false;
   let log = "";
 
   async function load() {
@@ -40,11 +41,19 @@
     try {
       const out: string = await ApplyUpdate();
       log = out || "done";
+      updated = true;
     } catch (e: any) {
       log = `apply failed: ${e?.message || e}\n\nFallback: manually run\n  brew upgrade --cask csm-gui  (macOS)\n  scoop update csm-gui  (Windows)`;
     } finally {
       applying = false;
-      await check();
+    }
+  }
+
+  async function restart() {
+    try {
+      await RestartApp();
+    } catch (e: any) {
+      log += `\nrestart failed: ${e?.message || e}`;
     }
   }
 
@@ -77,9 +86,14 @@
         <button class="btn" on:click={check} disabled={checking}>
           {checking ? "checking…" : "check for updates"}
         </button>
-        {#if hasUpdate}
+        {#if hasUpdate && !updated}
           <button class="btn primary" on:click={apply} disabled={applying}>
             {applying ? "updating…" : `update to ${latest}`}
+          </button>
+        {/if}
+        {#if updated}
+          <button class="btn primary" on:click={restart}>
+            restart now ↻
           </button>
         {/if}
       </div>
