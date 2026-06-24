@@ -154,13 +154,47 @@
     }, 0);
   }
 
+  function findGroup(s: Session) {
+    const allGroups = [...pinnedGroups, ...regularGroups];
+    return allGroups.find((g) => g.head.id === s.id || g.rest.some((r) => r.id === s.id));
+  }
+
   function buildMenuItems(s: Session) {
-    return [
+    const group = findGroup(s);
+    const groupSize = group ? group.rest.length + 1 : 1;
+    const items: any[] = [
       { label: "rename alias", action: () => (modal = { kind: "rename", session: s, value: s.alias || "" }), key: "F2" },
       { label: s.pinned ? "unpin" : "pin", action: () => togglePin(s), key: "P" },
       { label: "edit tags", action: () => (modal = { kind: "tag", session: s, value: (s.tags || []).join(", ") }), key: "T" },
       { label: "delete", action: () => deleteSession(s), danger: true, key: "Del" },
     ];
+    if (groupSize > 1) {
+      items.push({
+        label: `delete all ${groupSize} in group`,
+        action: () => deleteGroup(group!),
+        danger: true,
+      });
+    }
+    return items;
+  }
+
+  async function deleteGroup(g: { head: Session; rest: Session[] }) {
+    const all = [g.head, ...g.rest];
+    if (!confirm(`Delete ${all.length} sessions named "${g.head.alias || g.head.projectName}"?`)) return;
+    statusText.set(`deleting ${all.length}…`);
+    let ok = 0;
+    for (const s of all) {
+      try {
+        await DeleteSession(s.id);
+        ok++;
+        const tab = $tabs.find((t) => t.sessionId === s.id);
+        if (tab) tabs.update((arr) => arr.filter((t) => t.id !== tab.id));
+      } catch (e) {
+        console.error("delete:", e);
+      }
+    }
+    statusText.set(`deleted ${ok}/${all.length}`);
+    await refresh();
   }
 
   async function deleteSession(s: Session) {
