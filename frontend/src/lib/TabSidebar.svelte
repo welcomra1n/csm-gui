@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tabs, activeTabId } from "./store";
   import { KillPty } from "../../wailsjs/go/main/App.js";
+  import ProviderIcon from "./ProviderIcon.svelte";
 
   function selectTab(id: string) {
     activeTabId.set(id);
@@ -38,9 +39,7 @@
         class:active={$activeTabId === tab.id}
         on:click={() => selectTab(tab.id)}
       >
-        <span class="icon">
-          {#if tab.provider === "codex"}🤖{:else}🧠{/if}
-        </span>
+        <span class="icon"><ProviderIcon provider={tab.provider || "claude"} /></span>
         <span class="title" title={tab.title}>{tab.title}</span>
         <span class="close" on:click={(e) => closeTab(e, tab.id)}>×</span>
       </button>

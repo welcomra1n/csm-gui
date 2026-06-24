@@ -51,10 +51,13 @@
 
     term.open(containerEl);
     doResize();
+    term.focus();
 
     term.onData((data) => {
       WritePty(tabId, data).catch((e) => console.warn("write pty:", e));
     });
+
+    containerEl.addEventListener("click", () => term.focus());
 
     const outputEvent = `pty:output:${tabId}`;
     EventsOn(outputEvent, (data: string) => {

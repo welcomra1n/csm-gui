@@ -3,6 +3,7 @@
   import { sessions, tabs, activeTabId, nextTabId, statusText } from "./store";
   import type { Session } from "./types";
   import { ListSessions, StartPty } from "../../wailsjs/go/main/App.js";
+  import ProviderIcon from "./ProviderIcon.svelte";
 
   let filter = "";
 
@@ -105,7 +106,7 @@
       <div class="group-header">📌 고정 ({pinned.length})</div>
       {#each pinned as s (s.id)}
         <button class="item" on:click={() => openSession(s)}>
-          <span class="icon">{s.provider === "codex" ? "🤖" : "🧠"}</span>
+          <span class="icon"><ProviderIcon provider={s.provider} /></span>
           <span class="name">{s.alias || s.projectName}</span>
           <span class="time">{fmtTime(s.modTime)}</span>
         </button>
@@ -116,7 +117,7 @@
       <div class="group-header">📁 {folderName} ({items.length})</div>
       {#each items as s (s.id)}
         <button class="item" on:click={() => openSession(s)}>
-          <span class="icon">{s.provider === "codex" ? "🤖" : "🧠"}</span>
+          <span class="icon"><ProviderIcon provider={s.provider} /></span>
           <span class="name">{s.alias || s.projectName}</span>
           <span class="time">{fmtTime(s.modTime)}</span>
         </button>
@@ -127,7 +128,7 @@
       <div class="group-header">📂 일반 ({regular.length})</div>
       {#each regular as s (s.id)}
         <button class="item" on:click={() => openSession(s)}>
-          <span class="icon">{s.provider === "codex" ? "🤖" : "🧠"}</span>
+          <span class="icon"><ProviderIcon provider={s.provider} /></span>
           <span class="name">{s.alias || s.projectName}</span>
           <span class="time">{fmtTime(s.modTime)}</span>
         </button>
@@ -195,9 +196,20 @@
     align-items: center;
     gap: 8px;
     width: 100%;
-    padding: 6px 12px;
+    padding: 6px 12px 6px 28px;
     text-align: left;
     color: #c0c0c0;
+    position: relative;
+  }
+
+  .item::before {
+    content: "";
+    position: absolute;
+    left: 18px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: #2a2a2e;
   }
 
   .item:hover {
