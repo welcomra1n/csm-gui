@@ -781,7 +781,7 @@
   .searchbox {
     display: flex;
     gap: 4px;
-    padding: 6px 8px;
+    padding: 4px 6px 6px;
     border-bottom: 1px solid var(--border);
   }
 
@@ -790,7 +790,7 @@
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 2px;
-    padding: 3px 6px;
+    padding: 5px 8px;
     color: var(--fg);
     font-size: var(--ui-fs);
   }
@@ -800,11 +800,13 @@
   }
 
   .refresh {
-    width: 26px;
+    padding: 5px 8px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 2px;
     color: var(--fg-dim);
+    font-size: var(--ui-fs-xs);
+    min-width: 32px;
   }
 
   .refresh:hover {
@@ -836,6 +838,7 @@
     border-radius: 2px;
     color: var(--accent-folder);
     font-size: var(--ui-fs-xs);
+    min-width: 32px;
   }
 
   .folder-btn:hover {
