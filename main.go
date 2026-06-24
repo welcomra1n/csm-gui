@@ -28,8 +28,15 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 27, G: 27, B: 31, A: 1},
-		OnStartup:        app.startup,
+		BackgroundColour:         &options.RGBA{R: 27, G: 27, B: 31, A: 1},
+		OnStartup:                app.startup,
+		EnableDefaultContextMenu: true,
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop:     true,
+			DisableWebViewDrop: true,
+			CSSDropProperty:    "--wails-drop-target",
+			CSSDropValue:       "drop",
+		},
 		Bind: []interface{}{
 			app,
 		},

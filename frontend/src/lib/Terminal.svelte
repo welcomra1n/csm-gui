@@ -4,8 +4,8 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { WebLinksAddon } from "@xterm/addon-web-links";
   import "@xterm/xterm/css/xterm.css";
-  import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime.js";
-  import { WritePty, ResizePty } from "../../wailsjs/go/main/App.js";
+  import { EventsOn, EventsOff, OnFileDrop, OnFileDropOff } from "../../wailsjs/runtime/runtime.js";
+  import { WritePty, ResizePty, SaveClipboardImage } from "../../wailsjs/go/main/App.js";
   import { fontSize, activeTabId, tabs, leftWidth, rightWidth } from "./store";
 
   export let tabId: string;
@@ -159,6 +159,43 @@
 
     containerEl.addEventListener("click", () => term.focus());
 
+    // File drop: when user drops files anywhere in csm-gui window,
+    // write the absolute paths into the currently active tab's PTY.
+    OnFileDrop((_x, _y, paths) => {
+      if ($activeTabId !== tabId) return;
+      if (!paths || !paths.length) return;
+      const quoted = paths
+        .map((p) => (p.includes(" ") ? `"${p}"` : p))
+        .join(" ");
+      WritePty(tabId, quoted + " ").catch(() => {});
+    }, true);
+
+    // Clipboard paste: if image present, save to temp then paste path
+    containerEl.addEventListener("paste", async (e: ClipboardEvent) => {
+      if ($activeTabId !== tabId) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          e.preventDefault();
+          const blob = item.getAsFile();
+          if (!blob) continue;
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              const path: string = await SaveClipboardImage(reader.result as string);
+              const quoted = path.includes(" ") ? `"${path}"` : path;
+              WritePty(tabId, quoted + " ").catch(() => {});
+            } catch (err) {
+              console.warn("paste image:", err);
+            }
+          };
+          reader.readAsDataURL(blob);
+          return;
+        }
+      }
+    });
+
     let trustAnswered = false;
     const outputEvent = `pty:output:${tabId}`;
     EventsOn(outputEvent, (data: string) => {
@@ -202,6 +239,7 @@
     if (exitUnsubscribe) exitUnsubscribe();
     if (resizeObserver) resizeObserver.disconnect();
     window.removeEventListener("resize", doResize);
+    try { OnFileDropOff(); } catch {}
     if (term) term.dispose();
   });
 </script>

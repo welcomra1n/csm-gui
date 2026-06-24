@@ -5,9 +5,11 @@
   import Terminal from "./lib/Terminal.svelte";
   import Preview from "./lib/Preview.svelte";
   import Settings from "./lib/Settings.svelte";
+  import PermissionsModal from "./lib/PermissionsModal.svelte";
   import { AppVersion } from "../wailsjs/go/main/App.js";
 
   let settingsOpen = false;
+  let permsOpen = false;
   let updateToast: string | null = null;
   import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth, progressActive } from "./lib/store";
 
@@ -49,6 +51,10 @@
         localStorage.removeItem("csm-pending-version");
       }
       localStorage.setItem("csm-last-version", current);
+      // First-launch permissions intro
+      if (!localStorage.getItem("csm-perms-seen")) {
+        permsOpen = true;
+      }
     } catch {}
     return () => window.removeEventListener("keydown", handleKey);
   });
@@ -149,6 +155,13 @@
 
 {#if settingsOpen}
   <Settings onClose={() => (settingsOpen = false)} />
+{/if}
+
+{#if permsOpen}
+  <PermissionsModal onClose={() => {
+    permsOpen = false;
+    localStorage.setItem("csm-perms-seen", "1");
+  }} />
 {/if}
 
 {#if updateToast}

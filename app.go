@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,10 @@ import (
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+func base64DecodeStd(s string) ([]byte, error) {
+	return base64.StdEncoding.DecodeString(s)
+}
 
 func httpGet(url string) ([]byte, error) {
 	client := &http.Client{Timeout: 8 * time.Second}
@@ -321,8 +326,12 @@ func (a *App) ApplyUpdate() (string, error) {
 			}
 		}
 		// Refresh tap then upgrade (force handles edge cases)
-		out1, _ := exec.Command(brew, "update").CombinedOutput()
-		out2, err := exec.Command(brew, "reinstall", "--cask", "csm-gui").CombinedOutput()
+		c1 := exec.Command(brew, "update")
+		hideConsole(c1)
+		out1, _ := c1.CombinedOutput()
+		c2 := exec.Command(brew, "reinstall", "--cask", "csm-gui")
+		hideConsole(c2)
+		out2, err := c2.CombinedOutput()
 		return string(out1) + "\n" + string(out2), err
 	}
 	if runtime.GOOS == "windows" {
@@ -330,8 +339,12 @@ func (a *App) ApplyUpdate() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("scoop not found in PATH")
 		}
-		out1, _ := exec.Command(scoop, "update").CombinedOutput()
-		out2, err := exec.Command(scoop, "update", "csm-gui").CombinedOutput()
+		c1 := exec.Command(scoop, "update")
+		hideConsole(c1)
+		out1, _ := c1.CombinedOutput()
+		c2 := exec.Command(scoop, "update", "csm-gui")
+		hideConsole(c2)
+		out2, err := c2.CombinedOutput()
 		return string(out1) + "\n" + string(out2), err
 	}
 	return "", fmt.Errorf("unsupported platform: %s", runtime.GOOS)
@@ -364,7 +377,7 @@ func (a *App) RestartApp() error {
 	if runtime.GOOS == "windows" {
 		exe, _ := os.Executable()
 		go func() {
-			exec.Command("cmd", "/c", "timeout 1 && start \"\" \""+exe+"\"").Start()
+			spawnWindowsRelauncher(exe)
 			time.Sleep(200 * time.Millisecond)
 			wruntime.Quit(a.ctx)
 		}()
@@ -471,6 +484,26 @@ func (a *App) SetPermission(key string, enabled bool) error {
 	return nil
 }
 
+// SaveClipboardImage writes a base64 PNG to a temp file and returns the path.
+// Frontend pastes clipboard image -> reads as data URL -> sends base64 here.
+func (a *App) SaveClipboardImage(base64Data string) (string, error) {
+	// strip data URL prefix if present
+	if idx := strings.Index(base64Data, ","); idx > 0 {
+		base64Data = base64Data[idx+1:]
+	}
+	data, err := base64DecodeStd(base64Data)
+	if err != nil {
+		return "", err
+	}
+	tmpDir := os.TempDir()
+	name := fmt.Sprintf("csm-paste-%d.png", time.Now().UnixNano())
+	path := filepath.Join(tmpDir, name)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 // OpenURL opens a URL via the system default handler (e.g. System Settings).
 func (a *App) OpenURL(url string) error {
 	if url == "" {
@@ -480,7 +513,9 @@ func (a *App) OpenURL(url string) error {
 		return exec.Command("open", url).Start()
 	}
 	if runtime.GOOS == "windows" {
-		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+		c := exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+		hideConsole(c)
+		return c.Start()
 	}
 	return exec.Command("xdg-open", url).Start()
 }
@@ -533,7 +568,9 @@ func (a *App) GenerateRecap(id string, force bool) (string, error) {
 
 	prompt := "한국어로 정확히 세 줄로 이 세션을 요약해줘. 각 줄은 한 문장씩. 형식:\n1. [주제]\n2. [한 일/논의한 것]\n3. [결론/다음 단계]\n\n세션:\n" + ctx.String()
 
-	out, err := exec.Command(cmd, "-p", prompt, "--dangerously-skip-permissions").Output()
+	recapCmd := exec.Command(cmd, "-p", prompt, "--dangerously-skip-permissions")
+	hideConsole(recapCmd)
+	out, err := recapCmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("claude exec: %w", err)
 	}
