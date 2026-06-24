@@ -196,12 +196,20 @@
     }
   }
 
-  async function newSession(provider: "claude" | "codex") {
+  async function newSession(provider: "claude" | "codex" | "shell") {
     const tabId = nextTabId();
-    const cmd = provider === "codex" ? "codex" : "claude";
-    const args = provider === "codex"
-      ? ["--sandbox", "danger-full-access"]
-      : ["--dangerously-skip-permissions"];
+    let cmd: string;
+    let args: string[] = [];
+    if (provider === "codex") {
+      cmd = "codex";
+      args = ["--sandbox", "danger-full-access"];
+    } else if (provider === "shell") {
+      cmd = navigator.platform.toLowerCase().includes("win") ? "pwsh.exe" : "zsh";
+      args = ["-l"];
+    } else {
+      cmd = "claude";
+      args = ["--dangerously-skip-permissions"];
+    }
 
     // Use home dir for new sessions
     const dir = "";
@@ -257,6 +265,35 @@
   $: regular = filtered.filter((s) => !s.pinned && !s.folder);
   $: openIds = new Set($tabs.map((t) => t.sessionId).filter(Boolean));
 
+  // Group sessions by display name (alias or projectName)
+  let expandedGroups = new Set<string>();
+
+  function groupSessions(arr: Session[]): { key: string; head: Session; rest: Session[] }[] {
+    const map = new Map<string, Session[]>();
+    for (const s of arr) {
+      const key = (s.alias || s.projectName || "").trim().toLowerCase();
+      const list = map.get(key) || [];
+      list.push(s);
+      map.set(key, list);
+    }
+    const out: { key: string; head: Session; rest: Session[] }[] = [];
+    for (const [key, list] of map) {
+      list.sort((a, b) => (b.modTime || "").localeCompare(a.modTime || ""));
+      out.push({ key, head: list[0], rest: list.slice(1) });
+    }
+    out.sort((a, b) => (b.head.modTime || "").localeCompare(a.head.modTime || ""));
+    return out;
+  }
+
+  function toggleGroup(key: string) {
+    if (expandedGroups.has(key)) expandedGroups.delete(key);
+    else expandedGroups.add(key);
+    expandedGroups = new Set(expandedGroups);
+  }
+
+  $: pinnedGroups = groupSessions(pinned);
+  $: regularGroups = groupSessions(regular);
+
   function fmtTime(iso: string): string {
     if (!iso) return "";
     const d = new Date(iso);
@@ -292,47 +329,59 @@
         <button class="menu-item codex" on:click={() => { newMenuOpen = false; newSession("codex"); }}>
           <ProviderIcon provider="codex" size={12} /> Codex
         </button>
+        <button class="menu-item shell" on:click={() => { newMenuOpen = false; newSession("shell"); }}>
+          <span style="font-family: monospace;">›_</span> Shell
+        </button>
       </div>
     {/if}
   </div>
 
   <div class="list">
-    {#if pinned.length > 0}
+    {#if pinnedGroups.length > 0}
       <div class="group-header pinned">📌 PINNED · {pinned.length}</div>
-      {#each pinned as s (s.id)}
-        <div class="session-block">
-          <button
-            class="item"
-            class:selected={$selectedSessionId === s.id}
-            class:codex={s.provider === "codex"}
-            class:pinned={s.pinned}
-            class:active={openIds.has(s.id)}
-            on:mouseenter={() => selectedSessionId.set(s.id)}
-            on:click={() => openSession(s)}
-            on:contextmenu={(e) => openContext(e, s)}
-            on:keydown={(e) => handleSessionKey(e, s)}
-          >
-            {#if openIds.has(s.id)}<span class="live-dot"></span>{/if}
-            {#if s.pinned}<span class="pin">★</span>{/if}
-            <span class="icon"><ProviderIcon provider={s.provider} /></span>
-            <span class="name">{s.alias || s.projectName}</span>
-            {#if s.tags && s.tags.length > 0}
-              <span class="tags">
-                {#each s.tags as t}<span class="tag">#{t}</span>{/each}
-              </span>
+      {#each pinnedGroups as g (g.key)}
+        {@const renderList = expandedGroups.has(g.key) ? [g.head, ...g.rest] : [g.head]}
+        {#each renderList as s, idx (s.id)}
+          <div class="session-block">
+            <button
+              class="item"
+              class:selected={$selectedSessionId === s.id}
+              class:codex={s.provider === "codex"}
+              class:pinned={s.pinned}
+              class:active={openIds.has(s.id)}
+              class:nested={idx > 0}
+              on:mouseenter={() => selectedSessionId.set(s.id)}
+              on:click={() => openSession(s)}
+              on:contextmenu={(e) => openContext(e, s)}
+              on:keydown={(e) => handleSessionKey(e, s)}
+            >
+              {#if openIds.has(s.id)}<span class="live-dot"></span>{/if}
+              {#if s.pinned && idx === 0}<span class="pin">★</span>{/if}
+              <span class="icon"><ProviderIcon provider={s.provider} /></span>
+              <span class="name">{s.alias || s.projectName}</span>
+              {#if idx === 0 && g.rest.length > 0}
+                <span class="count" on:click|stopPropagation={() => toggleGroup(g.key)}>
+                  {expandedGroups.has(g.key) ? "▾" : "▸"} {g.rest.length + 1}
+                </span>
+              {/if}
+              {#if s.tags && s.tags.length > 0}
+                <span class="tags">
+                  {#each s.tags as t}<span class="tag">#{t}</span>{/each}
+                </span>
+              {/if}
+              <span class="time">{fmtTime(s.modTime)}</span>
+            </button>
+            {#if s.subagents && s.subagents.length > 0}
+              {#each s.subagents.slice(-5) as a (a.toolUseId)}
+                <div class="agent" class:running={!a.completed}>
+                  <span class="agent-status">{a.completed ? "✓" : "◐"}</span>
+                  <span class="agent-name">{a.subagentType || "agent"}</span>
+                  <span class="agent-desc">{a.description || ""}</span>
+                </div>
+              {/each}
             {/if}
-            <span class="time">{fmtTime(s.modTime)}</span>
-          </button>
-          {#if s.subagents && s.subagents.length > 0}
-            {#each s.subagents.slice(-5) as a (a.toolUseId)}
-              <div class="agent" class:running={!a.completed}>
-                <span class="agent-status">{a.completed ? "✓" : "◐"}</span>
-                <span class="agent-name">{a.subagentType || "agent"}</span>
-                <span class="agent-desc">{a.description || ""}</span>
-              </div>
-            {/each}
-          {/if}
-        </div>
+          </div>
+        {/each}
       {/each}
     {/if}
 
@@ -375,9 +424,11 @@
       {/each}
     {/each}
 
-    {#if regular.length > 0}
+    {#if regularGroups.length > 0}
       <div class="group-header normal">📂 ALL · {regular.length}</div>
-      {#each regular as s (s.id)}
+      {#each regularGroups as g (g.key)}
+        {@const renderList = expandedGroups.has(g.key) ? [g.head, ...g.rest] : [g.head]}
+        {#each renderList as s, idx (s.id)}
         <div class="session-block">
           <button
             class="item"
@@ -385,15 +436,21 @@
             class:codex={s.provider === "codex"}
             class:pinned={s.pinned}
             class:active={openIds.has(s.id)}
+            class:nested={idx > 0}
             on:mouseenter={() => selectedSessionId.set(s.id)}
             on:click={() => openSession(s)}
             on:contextmenu={(e) => openContext(e, s)}
             on:keydown={(e) => handleSessionKey(e, s)}
           >
             {#if openIds.has(s.id)}<span class="live-dot"></span>{/if}
-            {#if s.pinned}<span class="pin">★</span>{/if}
+            {#if s.pinned && idx === 0}<span class="pin">★</span>{/if}
             <span class="icon"><ProviderIcon provider={s.provider} /></span>
             <span class="name">{s.alias || s.projectName}</span>
+            {#if idx === 0 && g.rest.length > 0}
+              <span class="count" on:click|stopPropagation={() => toggleGroup(g.key)}>
+                {expandedGroups.has(g.key) ? "▾" : "▸"} {g.rest.length + 1}
+              </span>
+            {/if}
             {#if s.tags && s.tags.length > 0}
               <span class="tags">
                 {#each s.tags as t}<span class="tag">#{t}</span>{/each}
@@ -411,6 +468,7 @@
             {/each}
           {/if}
         </div>
+        {/each}
       {/each}
     {/if}
 
@@ -538,6 +596,11 @@
   .menu-item.codex:hover {
     background: var(--bg-hover);
     color: var(--accent-codex);
+  }
+
+  .menu-item.shell:hover {
+    background: var(--bg-hover);
+    color: var(--fg);
   }
 
   .list {
@@ -688,6 +751,28 @@
     display: flex;
     gap: 3px;
     flex-shrink: 0;
+  }
+
+  .item.nested {
+    padding-left: 32px;
+    color: var(--fg-mute);
+  }
+
+  .item.nested .name {
+    font-size: var(--ui-fs-sm);
+  }
+
+  .count {
+    color: var(--accent-pinned);
+    font-size: var(--ui-fs-xs);
+    padding: 1px 5px;
+    background: rgba(255, 214, 10, 0.08);
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .count:hover {
+    background: rgba(255, 214, 10, 0.2);
   }
 
   .tag {

@@ -3,7 +3,9 @@
   export let size: number = 14;
 </script>
 
-{#if provider === "codex"}
+{#if provider === "shell"}
+  <span style="font-family: monospace; font-size: {size}px; line-height: 1;">›_</span>
+{:else if provider === "codex"}
   <svg
     width={size}
     height={size}
