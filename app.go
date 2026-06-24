@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"strings"
 )
 
 // App struct
@@ -34,6 +36,9 @@ func (a *App) ListSessions() []*Session {
 		}
 		if tags, ok := meta.SessionTags[s.ID]; ok {
 			s.Tags = tags
+		}
+		if recap, ok := meta.Recaps[s.ID]; ok {
+			s.Recap = recap
 		}
 	}
 	return sessions
@@ -139,4 +144,61 @@ func (a *App) DeleteSession(id string) error {
 // GetMetadata returns the raw metadata object.
 func (a *App) GetMetadata() *Metadata {
 	return loadMetadata()
+}
+
+// GenerateRecap calls claude headlessly to produce a 2-3 sentence recap
+// of the session and caches it in metadata. Force=true regenerates.
+func (a *App) GenerateRecap(id string, force bool) (string, error) {
+	meta := loadMetadata()
+	if !force {
+		if r, ok := meta.Recaps[id]; ok && r != "" {
+			return r, nil
+		}
+	}
+	s := a.GetSession(id)
+	if s == nil {
+		return "", fmt.Errorf("session not found")
+	}
+
+	// Build context: first + recent messages
+	var ctx strings.Builder
+	limit := 30
+	start := 0
+	if len(s.Messages) > limit {
+		start = len(s.Messages) - limit
+	}
+	for i := start; i < len(s.Messages); i++ {
+		m := s.Messages[i]
+		ctx.WriteString(strings.ToUpper(m.Type))
+		ctx.WriteString(": ")
+		c := m.Content
+		if len(c) > 500 {
+			c = c[:500] + "…"
+		}
+		ctx.WriteString(c)
+		ctx.WriteString("\n\n")
+	}
+
+	augmentPATH()
+	cmd := "claude"
+	if lp, lerr := exec.LookPath(cmd); lerr == nil {
+		cmd = lp
+	} else if rp := resolveViaShell(cmd); rp != "" {
+		cmd = rp
+	}
+
+	prompt := "한국어로 이 세션을 2-3문장으로 간결하게 요약해줘. 핵심 주제와 결론만 (불릿/포맷 없이 평문):\n\n" + ctx.String()
+
+	out, err := exec.Command(cmd, "-p", prompt, "--dangerously-skip-permissions").Output()
+	if err != nil {
+		return "", fmt.Errorf("claude exec: %w", err)
+	}
+	recap := strings.TrimSpace(string(out))
+	if recap == "" {
+		return "", fmt.Errorf("empty recap")
+	}
+
+	meta.Recaps[id] = recap
+	saveMetadata(meta)
+	return recap, nil
 }

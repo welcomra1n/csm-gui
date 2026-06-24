@@ -1,7 +1,56 @@
 <script lang="ts">
   import { tabs, activeTabId } from "./store";
-  import { KillPty } from "../../wailsjs/go/main/App.js";
+  import { KillPty, RenameAlias } from "../../wailsjs/go/main/App.js";
   import ProviderIcon from "./ProviderIcon.svelte";
+  import ContextMenu from "./ContextMenu.svelte";
+  import PromptModal from "./PromptModal.svelte";
+  import type { Tab } from "./types";
+
+  let ctxMenu: { x: number; y: number; tab: Tab } | null = null;
+  let renaming: Tab | null = null;
+  let renameValue = "";
+
+  function openContext(e: MouseEvent, tab: Tab) {
+    e.preventDefault();
+    e.stopPropagation();
+    ctxMenu = null;
+    const x = e.clientX;
+    const y = e.clientY;
+    setTimeout(() => (ctxMenu = { x, y, tab }), 0);
+  }
+
+  function buildMenu(tab: Tab) {
+    return [
+      {
+        label: "rename",
+        action: () => {
+          renameValue = tab.title;
+          renaming = tab;
+        },
+        key: "F2",
+      },
+      { label: "close", action: () => closeTab(new MouseEvent("click"), tab.id), danger: true, key: "Ctrl+W" },
+    ];
+  }
+
+  async function confirmRename() {
+    if (!renaming) return;
+    const newTitle = renameValue.trim();
+    if (newTitle) {
+      // Update tab title locally
+      const t = renaming;
+      tabs.update((arr) => arr.map((x) => (x.id === t.id ? { ...x, title: newTitle } : x)));
+      // Also persist alias to session if attached
+      if (renaming.sessionId) {
+        try {
+          await RenameAlias(renaming.sessionId, newTitle);
+        } catch (e) {
+          console.error("rename alias:", e);
+        }
+      }
+    }
+    renaming = null;
+  }
 
   function selectTab(id: string) {
     activeTabId.set(id);
@@ -80,6 +129,8 @@
         on:dragover={onDragOver}
         on:drop={(e) => onDrop(e, tab.id)}
         on:click={() => selectTab(tab.id)}
+        on:contextmenu={(e) => openContext(e, tab)}
+        on:dblclick={() => { renameValue = tab.title; renaming = tab; }}
       >
         <span class="num">{String(i + 1).padStart(2, "0")}</span>
         <span class="icon"><ProviderIcon provider={tab.provider || "claude"} size={12} /></span>
@@ -89,6 +140,27 @@
     {/each}
   {/if}
 </div>
+
+{#if ctxMenu}
+  <ContextMenu
+    x={ctxMenu.x}
+    y={ctxMenu.y}
+    items={buildMenu(ctxMenu.tab)}
+    onClose={() => (ctxMenu = null)}
+  />
+{/if}
+
+{#if renaming}
+  <PromptModal
+    title={`Rename tab`}
+    bind:value={renameValue}
+    placeholder="new name"
+    confirmLabel="save"
+    danger={false}
+    onConfirm={confirmRename}
+    onCancel={() => (renaming = null)}
+  />
+{/if}
 
 <style>
   .sidebar {

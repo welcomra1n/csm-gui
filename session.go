@@ -77,6 +77,7 @@ type Session struct {
 	Tags         []string `json:"tags"`
 	Folder       string   `json:"folder"`
 	Subagents    []Subagent `json:"subagents"`
+	Recap        string     `json:"recap"`
 }
 
 type Message struct {
