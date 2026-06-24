@@ -9,7 +9,7 @@
 
   let settingsOpen = false;
   let updateToast: string | null = null;
-  import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth } from "./lib/store";
+  import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth, progressActive } from "./lib/store";
 
   function handleKey(e: KeyboardEvent) {
     const mod = e.metaKey || e.ctrlKey;
@@ -133,6 +133,10 @@
       <Preview />
     </div>
   </aside>
+
+  {#if $progressActive > 0}
+    <div class="progress-bar"></div>
+  {/if}
 
   <div class="statusbar">
     <span class="dot"></span>
@@ -286,6 +290,37 @@
 
   .gear:hover {
     color: var(--fg);
+  }
+
+  .progress-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--bg);
+    z-index: 100;
+    overflow: hidden;
+  }
+
+  .progress-bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--fg) 40%,
+      var(--fg) 60%,
+      transparent 100%
+    );
+    animation: indeterminate 1.1s ease-in-out infinite;
+    box-shadow: 0 0 8px var(--fg);
+  }
+
+  @keyframes indeterminate {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
   }
 
   .toast {

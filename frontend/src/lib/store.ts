@@ -21,6 +21,10 @@ export const rightWidth = writable<number>(isNaN(savedRightW) ? 260 : savedRight
 leftWidth.subscribe((v) => localStorage.setItem("csm-left-w", String(v)));
 rightWidth.subscribe((v) => localStorage.setItem("csm-right-w", String(v)));
 
+export const progressActive = writable<number>(0); // counter; >0 = busy
+export function startProgress() { progressActive.update((n) => n + 1); }
+export function endProgress() { progressActive.update((n) => Math.max(0, n - 1)); }
+
 let tabCounter = 0;
 export function nextTabId(): string {
   tabCounter++;

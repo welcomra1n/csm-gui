@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { sessions, tabs, activeTabId, nextTabId, statusText, selectedSessionId, focusSearch } from "./store";
+  import { sessions, tabs, activeTabId, nextTabId, statusText, selectedSessionId, focusSearch, startProgress, endProgress } from "./store";
   import type { Session } from "./types";
   import {
     ListSessions,
@@ -282,20 +282,23 @@
     const all = [g.head, ...g.rest];
     if (!confirm(`Delete ${all.length} sessions named "${g.head.alias || g.head.projectName}"?`)) return;
     statusText.set(`deleting ${all.length}…`);
+    startProgress();
     try {
       const ids = all.map((s) => s.id);
       const deleted = await DeleteSessions(ids);
-      // Close any open tabs for deleted sessions
       const idSet = new Set(ids);
       tabs.update((arr) => arr.filter((t) => !t.sessionId || !idSet.has(t.sessionId)));
       statusText.set(`deleted ${deleted}/${all.length}`);
     } catch (e: any) {
       statusText.set(`fail: ${e?.message || e}`);
+    } finally {
+      endProgress();
     }
     await refresh();
   }
 
   async function deleteSession(s: Session) {
+    startProgress();
     try {
       await DeleteSession(s.id);
       statusText.set(`deleted: ${s.alias || s.projectName}`);
@@ -304,6 +307,8 @@
       await refresh();
     } catch (e: any) {
       statusText.set(`fail: ${e?.message || e}`);
+    } finally {
+      endProgress();
     }
   }
 
