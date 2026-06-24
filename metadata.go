@@ -65,6 +65,14 @@ type Metadata struct {
 	TempSessions    map[string]bool     `json:"temp_sessions"`
 	Recaps          map[string]string   `json:"recaps"`
 	Prefs           map[string]bool     `json:"prefs"`
+	OpenTabs        []SavedTab          `json:"open_tabs"`
+}
+
+type SavedTab struct {
+	SessionID string `json:"sessionId,omitempty"`
+	Title     string `json:"title"`
+	Provider  string `json:"provider"`
+	Pinned    bool   `json:"pinned,omitempty"`
 }
 
 func metadataFilePath() string {

@@ -520,6 +520,21 @@ func (a *App) OpenURL(url string) error {
 	return exec.Command("xdg-open", url).Start()
 }
 
+// SaveOpenTabs persists the list of open tabs so they survive app updates
+// (localStorage is wiped when brew reinstall replaces the .app bundle).
+func (a *App) SaveOpenTabs(tabs []SavedTab) error {
+	meta := loadMetadata()
+	meta.OpenTabs = tabs
+	saveMetadata(meta)
+	return nil
+}
+
+// LoadOpenTabs returns the previously saved tabs.
+func (a *App) LoadOpenTabs() []SavedTab {
+	meta := loadMetadata()
+	return meta.OpenTabs
+}
+
 // GetMetadata returns the raw metadata object.
 func (a *App) GetMetadata() *Metadata {
 	return loadMetadata()

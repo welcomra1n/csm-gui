@@ -71,7 +71,16 @@ func (a *App) StartPty(tabId, command, dir string, args []string, cols, rows int
 		resolved = rp
 	}
 
-	cmd := p.Command(resolved, args...)
+	// Windows: if resolved is an npm .cmd shim, spawn node directly so
+	// cmd.exe's brief console window doesn't flash on each launch.
+	finalCmd := resolved
+	finalArgs := args
+	if nodeExe, jsPath, ok := resolveNpmShim(resolved); ok {
+		finalCmd = nodeExe
+		finalArgs = append([]string{jsPath}, args...)
+	}
+
+	cmd := p.Command(finalCmd, finalArgs...)
 	if dir == "" {
 		if home, err := os.UserHomeDir(); err == nil {
 			dir = home

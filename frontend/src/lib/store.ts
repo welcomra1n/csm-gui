@@ -4,24 +4,36 @@ import type { Session, Tab, SidebarMode } from "./types";
 export const tabs = writable<Tab[]>([]);
 export const activeTabId = writable<string | null>(null);
 
-// Persist tab metadata (not the live PTY) so we can re-open them on launch
+// Persist tab metadata via backend metadata.json so it survives app updates
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
 tabs.subscribe((arr) => {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      const snap = arr.map((t) => ({
+        sessionId: t.sessionId || "",
+        title: t.title,
+        provider: t.provider || "claude",
+        pinned: !!t.pinned,
+      }));
+      const mod = await import("../../wailsjs/go/main/App.js");
+      await mod.SaveOpenTabs(snap as any);
+    } catch (e) {
+      console.warn("SaveOpenTabs:", e);
+    }
+  }, 250);
+});
+
+export async function loadSavedTabs(): Promise<{ sessionId?: string; title: string; provider?: string; pinned?: boolean }[]> {
   try {
-    const snap = arr.map((t) => ({
-      sessionId: t.sessionId,
+    const mod = await import("../../wailsjs/go/main/App.js");
+    const list = await mod.LoadOpenTabs();
+    return (list || []).map((t: any) => ({
+      sessionId: t.sessionId || undefined,
       title: t.title,
       provider: t.provider,
       pinned: t.pinned,
     }));
-    localStorage.setItem("csm-tabs", JSON.stringify(snap));
-  } catch {}
-});
-
-export function loadSavedTabs(): { sessionId?: string; title: string; provider?: string; pinned?: boolean }[] {
-  try {
-    const raw = localStorage.getItem("csm-tabs");
-    if (!raw) return [];
-    return JSON.parse(raw);
   } catch {
     return [];
   }
