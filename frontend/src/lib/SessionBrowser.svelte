@@ -26,6 +26,7 @@
   let modal:
     | { kind: "rename" | "tag"; session: Session; value: string }
     | null = null;
+  let newTitleModal: { provider: "claude" | "codex" | "shell"; value: string } | null = null;
 
   let prevRunningAgents = new Set<string>();
   let audioCtx: AudioContext | null = null;
@@ -257,7 +258,22 @@
     }
   }
 
-  async function newSession(provider: "claude" | "codex" | "shell") {
+  function askNewSession(provider: "claude" | "codex" | "shell") {
+    newTitleModal = { provider, value: "" };
+  }
+
+  function confirmNewSession() {
+    if (!newTitleModal) return;
+    const m = newTitleModal;
+    newTitleModal = null;
+    newSession(m.provider, m.value);
+  }
+
+  function cancelNewSession() {
+    newTitleModal = null;
+  }
+
+  async function newSession(provider: "claude" | "codex" | "shell", title: string = "") {
     const tabId = nextTabId();
     let cmd: string;
     let args: string[] = [];
@@ -277,16 +293,42 @@
 
     try {
       await StartPty(tabId, cmd, dir, args, 120, 40);
+      const finalTitle = title.trim() || `new ${provider}`;
       tabs.update((arr) => [
         ...arr,
         {
           id: tabId,
-          title: `new ${provider}`,
+          title: finalTitle,
           provider,
         },
       ]);
       activeTabId.set(tabId);
       statusText.set(`new ${provider} session`);
+      // If user provided title, schedule alias persistence once JSONL appears
+      if (title.trim()) {
+        const wanted = title.trim();
+        let attempts = 0;
+        const tryApply = async () => {
+          attempts++;
+          const list = $sessions;
+          // Find newest session matching the active tab (no sessionId yet — match by recency + provider)
+          const candidate = list
+            .filter((s) => s.provider === provider && !openIds.has(s.id))
+            .sort((a, b) => (b.modTime || "").localeCompare(a.modTime || ""))[0];
+          if (candidate) {
+            try {
+              await RenameAlias(candidate.id, wanted);
+              tabs.update((arr) => arr.map((t) => (t.id === tabId ? { ...t, sessionId: candidate.id } : t)));
+              await refresh();
+              return;
+            } catch (e) {
+              console.warn("apply alias:", e);
+            }
+          }
+          if (attempts < 6) setTimeout(tryApply, 5000);
+        };
+        setTimeout(tryApply, 4000);
+      }
       setTimeout(refresh, 3000);
       setTimeout(refresh, 10000);
       setTimeout(refresh, 30000);
@@ -385,13 +427,13 @@
     </button>
     {#if newMenuOpen}
       <div class="new-menu">
-        <button class="menu-item claude" on:click={() => { newMenuOpen = false; newSession("claude"); }}>
+        <button class="menu-item claude" on:click={() => { newMenuOpen = false; askNewSession("claude"); }}>
           <ProviderIcon provider="claude" size={12} /> Claude
         </button>
-        <button class="menu-item codex" on:click={() => { newMenuOpen = false; newSession("codex"); }}>
+        <button class="menu-item codex" on:click={() => { newMenuOpen = false; askNewSession("codex"); }}>
           <ProviderIcon provider="codex" size={12} /> Codex
         </button>
-        <button class="menu-item shell" on:click={() => { newMenuOpen = false; newSession("shell"); }}>
+        <button class="menu-item shell" on:click={() => { newMenuOpen = false; askNewSession("shell"); }}>
           <span style="font-family: monospace;">›_</span> Shell
         </button>
       </div>
@@ -560,6 +602,18 @@
     danger={false}
     onConfirm={confirmModal}
     onCancel={() => (modal = null)}
+  />
+{/if}
+
+{#if newTitleModal}
+  <PromptModal
+    title={`New ${newTitleModal.provider} session — title (optional)`}
+    bind:value={newTitleModal.value}
+    placeholder="leave empty for default name"
+    confirmLabel="start"
+    danger={false}
+    onConfirm={confirmNewSession}
+    onCancel={cancelNewSession}
   />
 {/if}
 
