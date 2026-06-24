@@ -147,13 +147,27 @@
     const id = setInterval(refresh, 15000);
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
+    window.addEventListener("keydown", handleGlobalKey);
     return () => {
       clearInterval(id);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("keydown", handleGlobalKey);
     };
   });
 
   let restored = false;
+
+  function handleGlobalKey(e: KeyboardEvent) {
+    const mod = e.metaKey || e.ctrlKey;
+    const id = $selectedSessionId;
+    if (!id) return;
+    const s = $sessions.find((x) => x.id === id);
+    if (!s) return;
+    if (mod && (e.key === "t" || e.key === "T")) {
+      e.preventDefault();
+      modal = { kind: "tag", session: s, value: (s.tags || []).join(", ") };
+    }
+  }
   async function restoreTabs() {
     if (restored) return;
     restored = true;
