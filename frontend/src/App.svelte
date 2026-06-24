@@ -138,13 +138,17 @@
     {#if $previewOpen}
       <div class="right-bottom">
         <div class="preview-header">
-          <span>preview</span>
-          <button class="preview-close" on:click={() => previewOpen.set(false)} title="hide preview">×</button>
+          <span>PREVIEW</span>
+          <button class="preview-close" on:click={() => previewOpen.set(false)} title="hide preview (collapse)">▼ hide</button>
         </div>
         <div class="preview-body">
           <Preview />
         </div>
       </div>
+    {:else}
+      <button class="preview-show-bar" on:click={() => previewOpen.set(true)} title="show preview">
+        ▲ show preview
+      </button>
     {/if}
   </aside>
 
@@ -264,16 +268,35 @@
 
   .preview-close {
     color: var(--fg-mute);
-    font-size: var(--ui-fs);
-    padding: 0 6px;
+    font-size: var(--ui-fs-xs);
+    padding: 2px 8px;
     background: none;
-    border: none;
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
     cursor: pointer;
     line-height: 1;
   }
 
   .preview-close:hover {
     color: var(--fg);
+    border-color: var(--fg);
+  }
+
+  .preview-show-bar {
+    background: var(--bg-elev);
+    color: var(--fg-mute);
+    border: none;
+    border-top: 1px solid var(--border-strong);
+    padding: 6px 8px;
+    font-size: var(--ui-fs-xs);
+    cursor: pointer;
+    text-align: center;
+    letter-spacing: 0.5px;
+  }
+
+  .preview-show-bar:hover {
+    color: var(--fg);
+    background: var(--bg-hover);
   }
 
   .preview-body {
