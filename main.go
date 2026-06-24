@@ -6,6 +6,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
 //go:embed all:frontend/dist
@@ -28,7 +29,7 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour:         &options.RGBA{R: 27, G: 27, B: 31, A: 1},
+		BackgroundColour:         &options.RGBA{R: 0, G: 0, B: 0, A: 1},
 		OnStartup:                app.startup,
 		EnableDefaultContextMenu: true,
 		DragAndDrop: &options.DragAndDrop{
@@ -36,6 +37,28 @@ func main() {
 			DisableWebViewDrop: true,
 			CSSDropProperty:    "--wails-drop-target",
 			CSSDropValue:       "drop",
+		},
+		Windows: &windows.Options{
+			Theme:                             windows.Dark,
+			WebviewIsTransparent:              false,
+			WindowIsTranslucent:               false,
+			DisableWindowIcon:                 false,
+			DisableFramelessWindowDecorations: false,
+			BackdropType:                      windows.Acrylic,
+			CustomTheme: &windows.ThemeSettings{
+				DarkModeTitleBar:           windows.RGB(0, 0, 0),
+				DarkModeTitleBarInactive:   windows.RGB(0, 0, 0),
+				DarkModeTitleText:          windows.RGB(0, 255, 102),
+				DarkModeTitleTextInactive:  windows.RGB(0, 204, 82),
+				DarkModeBorder:             windows.RGB(0, 255, 102),
+				DarkModeBorderInactive:     windows.RGB(0, 90, 35),
+				LightModeTitleBar:          windows.RGB(0, 0, 0),
+				LightModeTitleBarInactive:  windows.RGB(0, 0, 0),
+				LightModeTitleText:         windows.RGB(0, 255, 102),
+				LightModeTitleTextInactive: windows.RGB(0, 204, 82),
+				LightModeBorder:            windows.RGB(0, 255, 102),
+				LightModeBorderInactive:    windows.RGB(0, 90, 35),
+			},
 		},
 		Bind: []interface{}{
 			app,
