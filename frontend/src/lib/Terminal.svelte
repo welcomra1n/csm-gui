@@ -93,7 +93,32 @@
     });
     term.focus();
 
+    // IME composition handling: while composing, swallow onData,
+    // then emit the composed string once on compositionend.
+    let composing = false;
+    let composeBuffer = "";
+
+    const helper = containerEl.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
+    if (helper) {
+      helper.addEventListener("compositionstart", () => {
+        composing = true;
+        composeBuffer = "";
+      });
+      helper.addEventListener("compositionupdate", (e: CompositionEvent) => {
+        composeBuffer = e.data || "";
+      });
+      helper.addEventListener("compositionend", (e: CompositionEvent) => {
+        composing = false;
+        const out = e.data || composeBuffer;
+        composeBuffer = "";
+        if (out) {
+          WritePty(tabId, out).catch((err) => console.warn("write pty:", err));
+        }
+      });
+    }
+
     term.onData((data) => {
+      if (composing) return;
       WritePty(tabId, data).catch((e) => console.warn("write pty:", e));
     });
 
