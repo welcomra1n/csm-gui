@@ -81,8 +81,15 @@
 
   function openContext(e: MouseEvent, s: Session) {
     e.preventDefault();
+    e.stopPropagation();
     selectedSessionId.set(s.id);
-    ctxMenu = { x: e.clientX, y: e.clientY, session: s };
+    // Force unmount first so onMount re-runs and listeners reset
+    ctxMenu = null;
+    const x = e.clientX;
+    const y = e.clientY;
+    setTimeout(() => {
+      ctxMenu = { x, y, session: s };
+    }, 0);
   }
 
   function buildMenuItems(s: Session) {
