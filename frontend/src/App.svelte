@@ -96,7 +96,7 @@
   .left {
     grid-area: left;
     background: var(--bg-elev);
-    border-right: 1px solid var(--border);
+    border-right: 1px solid var(--border-strong);
     overflow: hidden;
   }
 
@@ -112,14 +112,14 @@
     display: flex;
     flex-direction: column;
     background: var(--bg-elev);
-    border-left: 1px solid var(--border);
+    border-left: 1px solid var(--border-strong);
     overflow: hidden;
   }
 
   .right-top {
     flex: 2;
     overflow: hidden;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-strong);
   }
 
   .right-bottom {
@@ -170,7 +170,7 @@
     align-items: center;
     gap: 8px;
     background: var(--bg-elev);
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-strong);
     padding: 0 10px;
     line-height: 20px;
     font-size: var(--ui-fs-sm);

@@ -19,7 +19,9 @@
     --bg: #000000;
     --bg-elev: #0a0a0a;
     --bg-hover: #111111;
-    --border: #1a1a1a;
+    --border: #1f4d33;
+    --border-strong: #2da662;
+    --border-soft: #143323;
     --fg: #00ff66;
     --fg-dim: #00cc52;
     --fg-mute: #007a31;
