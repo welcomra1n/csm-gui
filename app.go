@@ -373,6 +373,118 @@ func (a *App) RestartApp() error {
 	return fmt.Errorf("unsupported platform")
 }
 
+// Permission describes one app capability shown in the permissions modal.
+type Permission struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+	Category    string `json:"category"` // "os" or "app"
+	Required    bool   `json:"required"`
+	SystemURL   string `json:"systemUrl"`
+	Enabled     bool   `json:"enabled"`
+}
+
+// ListPermissions returns the full permission set + current state.
+func (a *App) ListPermissions() []Permission {
+	meta := loadMetadata()
+	prefs := meta.Prefs
+	get := func(k string, def bool) bool {
+		if v, ok := prefs[k]; ok {
+			return v
+		}
+		return def
+	}
+
+	osFullDisk := ""
+	osNotif := ""
+	if runtime.GOOS == "darwin" {
+		osFullDisk = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+		osNotif = "x-apple.systempreferences:com.apple.preference.notifications"
+	}
+
+	return []Permission{
+		{
+			Key:         "fs-claude",
+			Label:       "~/.claude 디렉토리 읽기",
+			Description: "Claude Code 세션(JSONL), 메타데이터, 별칭, 폴더, 태그 저장 위치. 필수.",
+			Category:    "os",
+			Required:    true,
+			SystemURL:   osFullDisk,
+			Enabled:     true,
+		},
+		{
+			Key:         "fs-codex",
+			Label:       "~/.codex 디렉토리 읽기",
+			Description: "Codex CLI 세션 인덱스 + JSONL. 필수.",
+			Category:    "os",
+			Required:    true,
+			SystemURL:   osFullDisk,
+			Enabled:     true,
+		},
+		{
+			Key:         "pty-exec",
+			Label:       "claude / codex / shell 실행",
+			Description: "PTY를 통해 CLI 프로세스를 띄우고 입출력을 중계. 필수.",
+			Category:    "app",
+			Required:    true,
+			SystemURL:   "",
+			Enabled:     true,
+		},
+		{
+			Key:         "notifications",
+			Label:       "시스템 알림 표시",
+			Description: "서브에이전트 완료 시 OS 알림(창이 비활성일 때). 끄려면 토글 해제.",
+			Category:    "app",
+			Required:    false,
+			SystemURL:   osNotif,
+			Enabled:     get("notifications", true),
+		},
+		{
+			Key:         "auto-recap",
+			Label:       "탭 닫을 때 자동 요약",
+			Description: "탭 종료 시 백그라운드로 claude -p 호출해 3줄 recap 생성. claude 토큰 사용.",
+			Category:    "app",
+			Required:    false,
+			SystemURL:   "",
+			Enabled:     get("auto-recap", true),
+		},
+		{
+			Key:         "update-check",
+			Label:       "업데이트 자동 확인",
+			Description: "설정창 열 때 GitHub에서 최신 릴리스 조회.",
+			Category:    "app",
+			Required:    false,
+			SystemURL:   "",
+			Enabled:     get("update-check", true),
+		},
+	}
+}
+
+// SetPermission updates an app-level preference toggle.
+func (a *App) SetPermission(key string, enabled bool) error {
+	meta := loadMetadata()
+	if meta.Prefs == nil {
+		meta.Prefs = map[string]bool{}
+	}
+	meta.Prefs[key] = enabled
+	saveMetadata(meta)
+	return nil
+}
+
+// OpenURL opens a URL via the system default handler (e.g. System Settings).
+func (a *App) OpenURL(url string) error {
+	if url == "" {
+		return fmt.Errorf("empty url")
+	}
+	if runtime.GOOS == "darwin" {
+		return exec.Command("open", url).Start()
+	}
+	if runtime.GOOS == "windows" {
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	}
+	return exec.Command("xdg-open", url).Start()
+}
+
 // GetMetadata returns the raw metadata object.
 func (a *App) GetMetadata() *Metadata {
 	return loadMetadata()

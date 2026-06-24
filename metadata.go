@@ -64,6 +64,7 @@ type Metadata struct {
 	FolderColors    map[string]string   `json:"folder_colors"`
 	TempSessions    map[string]bool     `json:"temp_sessions"`
 	Recaps          map[string]string   `json:"recaps"`
+	Prefs           map[string]bool     `json:"prefs"`
 }
 
 func metadataFilePath() string {
@@ -80,6 +81,7 @@ func loadMetadata() *Metadata {
 		FolderColors:    make(map[string]string),
 		TempSessions:    make(map[string]bool),
 		Recaps:          make(map[string]string),
+		Prefs:           make(map[string]bool),
 	}
 	data, err := os.ReadFile(metadataFilePath())
 	if err != nil {
@@ -105,6 +107,9 @@ func loadMetadata() *Metadata {
 	}
 	if m.Recaps == nil {
 		m.Recaps = make(map[string]string)
+	}
+	if m.Prefs == nil {
+		m.Prefs = make(map[string]bool)
 	}
 	return m
 }

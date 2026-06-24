@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { AppVersion, CheckUpdate, ApplyUpdate, RestartApp } from "../../wailsjs/go/main/App.js";
+  import PermissionsPanel from "./PermissionsPanel.svelte";
 
   export let onClose: () => void;
 
@@ -110,6 +111,11 @@
       {#if log}
         <pre class="log">{log}</pre>
       {/if}
+    </div>
+
+    <div class="section">
+      <div class="section-title">PERMISSIONS</div>
+      <PermissionsPanel dense />
     </div>
   </div>
 </div>

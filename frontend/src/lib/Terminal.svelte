@@ -6,7 +6,7 @@
   import "@xterm/xterm/css/xterm.css";
   import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime.js";
   import { WritePty, ResizePty } from "../../wailsjs/go/main/App.js";
-  import { fontSize, activeTabId, tabs } from "./store";
+  import { fontSize, activeTabId, tabs, leftWidth, rightWidth } from "./store";
 
   export let tabId: string;
 
@@ -17,6 +17,12 @@
     });
   }
 
+  // Re-fit on splitter drag (when this tab is active)
+  $: if (term && fit && $activeTabId === tabId) {
+    void $leftWidth; void $rightWidth;
+    requestAnimationFrame(doResize);
+  }
+
   let containerEl: HTMLDivElement;
   let term: Terminal;
   let fit: FitAddon;
@@ -25,10 +31,15 @@
   let exitUnsubscribe: (() => void) | null = null;
 
   function doResize() {
-    if (!fit || !term) return;
+    if (!fit || !term || !containerEl) return;
     try {
+      const rect = containerEl.getBoundingClientRect();
+      // Skip if container has no real width yet (avoids cols=1-3 bug)
+      if (rect.width < 80 || rect.height < 40) return;
       fit.fit();
-      ResizePty(tabId, term.cols, term.rows).catch((e) =>
+      const cols = Math.max(term.cols, 20);
+      const rows = Math.max(term.rows, 5);
+      ResizePty(tabId, cols, rows).catch((e) =>
         console.warn("resize pty:", e),
       );
     } catch (e) {
@@ -84,12 +95,16 @@
     term.loadAddon(new WebLinksAddon());
 
     term.open(containerEl);
-    // Wait for layout then resize a few times to ensure PTY matches
-    requestAnimationFrame(() => {
-      doResize();
-      setTimeout(doResize, 50);
-      setTimeout(doResize, 200);
-      setTimeout(doResize, 500);
+    // Wait for layout + fonts then resize repeatedly
+    const fontsReady = (document as any).fonts?.ready || Promise.resolve();
+    fontsReady.then(() => {
+      requestAnimationFrame(() => {
+        doResize();
+        setTimeout(doResize, 50);
+        setTimeout(doResize, 200);
+        setTimeout(doResize, 500);
+        setTimeout(doResize, 1000);
+      });
     });
     term.focus();
 
@@ -159,12 +174,14 @@
 
     resizeObserver = new ResizeObserver(() => doResize());
     resizeObserver.observe(containerEl);
+    window.addEventListener("resize", doResize);
   });
 
   onDestroy(() => {
     if (outputUnsubscribe) outputUnsubscribe();
     if (exitUnsubscribe) exitUnsubscribe();
     if (resizeObserver) resizeObserver.disconnect();
+    window.removeEventListener("resize", doResize);
     if (term) term.dispose();
   });
 </script>
