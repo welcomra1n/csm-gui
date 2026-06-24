@@ -30,15 +30,26 @@
   let outputUnsubscribe: (() => void) | null = null;
   let exitUnsubscribe: (() => void) | null = null;
 
+  let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastCols = 0;
+  let lastRows = 0;
+
   function doResize() {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(performResize, 40);
+  }
+
+  function performResize() {
     if (!fit || !term || !containerEl) return;
     try {
       const rect = containerEl.getBoundingClientRect();
-      // Skip if container has no real width yet (avoids cols=1-3 bug)
       if (rect.width < 80 || rect.height < 40) return;
       fit.fit();
       const cols = Math.max(term.cols, 20);
       const rows = Math.max(term.rows, 5);
+      if (cols === lastCols && rows === lastRows) return; // no actual change
+      lastCols = cols;
+      lastRows = rows;
       ResizePty(tabId, cols, rows).catch((e) =>
         console.warn("resize pty:", e),
       );
@@ -108,10 +119,13 @@
     });
     term.focus();
 
-    // IME composition handling: while composing, swallow onData,
-    // then emit the composed string once on compositionend.
+    // IME composition handling.
+    // Strategy: while composing, swallow onData. On compositionend, write the
+    // composed text and suppress onData for a short window so xterm's
+    // own keydown→data path doesn't re-emit the same chars.
     let composing = false;
     let composeBuffer = "";
+    let suppressUntil = 0;
 
     const helper = containerEl.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
     if (helper) {
@@ -124,16 +138,22 @@
       });
       helper.addEventListener("compositionend", (e: CompositionEvent) => {
         composing = false;
+        suppressUntil = Date.now() + 80;
         const out = e.data || composeBuffer;
         composeBuffer = "";
         if (out) {
           WritePty(tabId, out).catch((err) => console.warn("write pty:", err));
         }
+        // Clear helper textarea so xterm doesn't echo composed text
+        try {
+          helper.value = "";
+        } catch {}
       });
     }
 
     term.onData((data) => {
       if (composing) return;
+      if (Date.now() < suppressUntil) return;
       WritePty(tabId, data).catch((e) => console.warn("write pty:", e));
     });
 
