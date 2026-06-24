@@ -21,8 +21,15 @@
     | { kind: "rename" | "tag" | "delete"; session: Session; value: string }
     | null = null;
 
-  onMount(async () => {
-    await refresh();
+  onMount(() => {
+    refresh();
+    const id = setInterval(refresh, 15000);
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
   });
 
   async function refresh() {
@@ -65,6 +72,8 @@
       ]);
       activeTabId.set(tabId);
       statusText.set(`open: ${s.projectName}`);
+      setTimeout(refresh, 3000);
+      setTimeout(refresh, 10000);
     } catch (e: any) {
       statusText.set(`fail: ${e?.message || e}`);
     }
@@ -163,6 +172,9 @@
       ]);
       activeTabId.set(tabId);
       statusText.set(`new ${provider} session`);
+      setTimeout(refresh, 3000);
+      setTimeout(refresh, 10000);
+      setTimeout(refresh, 30000);
     } catch (e: any) {
       statusText.set(`fail: ${e?.message || e}`);
     }
