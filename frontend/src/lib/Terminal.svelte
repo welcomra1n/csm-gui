@@ -105,6 +105,16 @@
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon());
 
+    // Ensure Tab + arrow keys always go to PTY, never to browser focus traversal
+    term.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
+      if (ev.type !== "keydown") return true;
+      if (ev.key === "Tab") {
+        ev.preventDefault();
+        return true;
+      }
+      return true;
+    });
+
     term.open(containerEl);
     // Wait for layout + fonts then resize repeatedly
     const fontsReady = (document as any).fonts?.ready || Promise.resolve();
