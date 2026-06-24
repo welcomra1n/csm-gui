@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -60,9 +61,14 @@ func (a *App) StartPty(tabId, command, dir string, args []string, cols, rows int
 		return fmt.Errorf("pty resize: %w", err)
 	}
 
+	// Augment PATH with common locations not present in macOS GUI env
+	augmentPATH()
+
 	resolved := command
 	if lp, lerr := exec.LookPath(command); lerr == nil {
 		resolved = lp
+	} else if rp := resolveViaShell(command); rp != "" {
+		resolved = rp
 	}
 
 	cmd := p.Command(resolved, args...)
@@ -176,6 +182,70 @@ func (a *App) KillPty(tabId string) error {
 		return s.cmd.Process.Kill()
 	}
 	return nil
+}
+
+var pathAugmented bool
+
+func augmentPATH() {
+	if pathAugmented {
+		return
+	}
+	pathAugmented = true
+
+	home, _ := os.UserHomeDir()
+	current := os.Getenv("PATH")
+	candidates := []string{
+		"/opt/homebrew/bin",
+		"/opt/homebrew/sbin",
+		"/usr/local/bin",
+		"/usr/local/sbin",
+		home + "/.local/bin",
+		home + "/.npm-global/bin",
+		home + "/.volta/bin",
+		home + "/.fnm/aliases/default/bin",
+		home + "/.bun/bin",
+		home + "/.cargo/bin",
+	}
+	// add nvm node bins
+	nvmDir := home + "/.nvm/versions/node"
+	if entries, err := os.ReadDir(nvmDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				candidates = append(candidates, nvmDir+"/"+e.Name()+"/bin")
+			}
+		}
+	}
+	parts := []string{current}
+	have := map[string]bool{}
+	for _, p := range strings.Split(current, string(os.PathListSeparator)) {
+		have[p] = true
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil && !have[c] {
+			parts = append(parts, c)
+			have[c] = true
+		}
+	}
+	os.Setenv("PATH", strings.Join(parts, string(os.PathListSeparator)))
+}
+
+func resolveViaShell(command string) string {
+	if runtime.GOOS == "windows" {
+		return ""
+	}
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+	out, err := exec.Command(shell, "-lic", "command -v "+command).Output()
+	if err != nil {
+		return ""
+	}
+	p := strings.TrimSpace(string(out))
+	if p == "" {
+		return ""
+	}
+	return p
 }
 
 // ListPtyTabs returns the IDs of all running PTY tabs.
