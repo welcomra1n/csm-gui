@@ -92,6 +92,7 @@ func (a *App) StartPty(tabId, command, dir string, args []string, cols, rows int
 		env = append(env, "TERM=xterm-256color")
 	}
 	cmd.Env = env
+	hidePtyChild(cmd)
 
 	if err := cmd.Start(); err != nil {
 		p.Close()
