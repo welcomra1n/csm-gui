@@ -29,6 +29,9 @@
     } else if (mod && (e.key === "f" || e.key === "F")) {
       e.preventDefault();
       focusSearch.update((n) => n + 1);
+    } else if (mod && e.key === ",") {
+      e.preventDefault();
+      settingsOpen = true;
     }
   }
 
