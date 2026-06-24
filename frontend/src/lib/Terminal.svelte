@@ -77,7 +77,13 @@
     term.loadAddon(new WebLinksAddon());
 
     term.open(containerEl);
-    doResize();
+    // Wait for layout then resize a few times to ensure PTY matches
+    requestAnimationFrame(() => {
+      doResize();
+      setTimeout(doResize, 50);
+      setTimeout(doResize, 200);
+      setTimeout(doResize, 500);
+    });
     term.focus();
 
     term.onData((data) => {

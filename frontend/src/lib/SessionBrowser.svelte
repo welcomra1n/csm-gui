@@ -122,7 +122,7 @@
     const dir = s.projectDir || s.cwd || "";
 
     try {
-      await StartPty(tabId, cmd, dir, args, 80, 24);
+      await StartPty(tabId, cmd, dir, args, 120, 40);
       tabs.update((arr) => [
         ...arr,
         {
@@ -276,7 +276,7 @@
     const dir = "";
 
     try {
-      await StartPty(tabId, cmd, dir, args, 80, 24);
+      await StartPty(tabId, cmd, dir, args, 120, 40);
       tabs.update((arr) => [
         ...arr,
         {
