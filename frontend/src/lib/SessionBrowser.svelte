@@ -216,6 +216,7 @@
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
   })();
   $: regular = filtered.filter((s) => !s.pinned && !s.folder);
+  $: openIds = new Set($tabs.map((t) => t.sessionId).filter(Boolean));
 
   function fmtTime(iso: string): string {
     if (!iso) return "";
@@ -265,11 +266,13 @@
           class:selected={$selectedSessionId === s.id}
           class:codex={s.provider === "codex"}
           class:pinned={s.pinned}
+          class:active={openIds.has(s.id)}
           on:mouseenter={() => selectedSessionId.set(s.id)}
           on:click={() => openSession(s)}
           on:contextmenu={(e) => openContext(e, s)}
           on:keydown={(e) => handleSessionKey(e, s)}
         >
+          {#if openIds.has(s.id)}<span class="live-dot"></span>{/if}
           {#if s.pinned}<span class="pin">★</span>{/if}
           <span class="icon"><ProviderIcon provider={s.provider} /></span>
           <span class="name">{s.alias || s.projectName}</span>
@@ -291,11 +294,13 @@
           class:selected={$selectedSessionId === s.id}
           class:codex={s.provider === "codex"}
           class:pinned={s.pinned}
+          class:active={openIds.has(s.id)}
           on:mouseenter={() => selectedSessionId.set(s.id)}
           on:click={() => openSession(s)}
           on:contextmenu={(e) => openContext(e, s)}
           on:keydown={(e) => handleSessionKey(e, s)}
         >
+          {#if openIds.has(s.id)}<span class="live-dot"></span>{/if}
           {#if s.pinned}<span class="pin">★</span>{/if}
           <span class="icon"><ProviderIcon provider={s.provider} /></span>
           <span class="name">{s.alias || s.projectName}</span>
@@ -317,11 +322,13 @@
           class:selected={$selectedSessionId === s.id}
           class:codex={s.provider === "codex"}
           class:pinned={s.pinned}
+          class:active={openIds.has(s.id)}
           on:mouseenter={() => selectedSessionId.set(s.id)}
           on:click={() => openSession(s)}
           on:contextmenu={(e) => openContext(e, s)}
           on:keydown={(e) => handleSessionKey(e, s)}
         >
+          {#if openIds.has(s.id)}<span class="live-dot"></span>{/if}
           {#if s.pinned}<span class="pin">★</span>{/if}
           <span class="icon"><ProviderIcon provider={s.provider} /></span>
           <span class="name">{s.alias || s.projectName}</span>
@@ -516,6 +523,31 @@
 
   .item.codex .icon {
     color: var(--accent-codex);
+  }
+
+  .item.active {
+    color: var(--fg);
+  }
+
+  .item.active .name {
+    text-shadow: 0 0 6px var(--fg-mute);
+  }
+
+  .live-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--fg);
+    margin-left: -8px;
+    margin-right: 2px;
+    box-shadow: 0 0 6px var(--fg);
+    animation: pulse 1.4s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.3; transform: scale(0.7); }
   }
 
   .pin {
