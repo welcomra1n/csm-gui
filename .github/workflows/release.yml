@@ -46,17 +46,27 @@ jobs:
         working-directory: frontend
         run: npm install
 
+      - name: Compute version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          wails build -platform darwin/universal -clean
+          wails build -platform darwin/universal -clean -ldflags "-X main.version=${{ steps.ver.outputs.version }}"
           cd build/bin
           ditto -c -k --sequesterRsrc --keepParent csm.app csm-gui-darwin.zip
 
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          wails build -platform windows/amd64 -clean
+          wails build -platform windows/amd64 -clean -ldflags "-X main.version=${{ steps.ver.outputs.version }}"
           cd build/bin
           Compress-Archive -Path csm.exe -DestinationPath csm-gui-windows-amd64.zip
 

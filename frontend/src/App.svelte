@@ -4,6 +4,9 @@
   import SessionBrowser from "./lib/SessionBrowser.svelte";
   import Terminal from "./lib/Terminal.svelte";
   import Preview from "./lib/Preview.svelte";
+  import Settings from "./lib/Settings.svelte";
+
+  let settingsOpen = false;
   import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth } from "./lib/store";
 
   function handleKey(e: KeyboardEvent) {
@@ -120,8 +123,13 @@
     <span>{$statusText || `${$tabs.length} tabs`}</span>
     <span class="spacer"></span>
     <span class="zoom">{$fontSize}px</span>
+    <button class="gear" on:click={() => (settingsOpen = true)} title="settings">⚙</button>
   </div>
 </div>
+
+{#if settingsOpen}
+  <Settings onClose={() => (settingsOpen = false)} />
+{/if}
 
 <style>
   .app {
@@ -244,5 +252,15 @@
 
   .zoom {
     color: var(--fg-mute);
+  }
+
+  .gear {
+    color: var(--fg-mute);
+    font-size: var(--ui-fs);
+    padding: 0 6px;
+  }
+
+  .gear:hover {
+    color: var(--fg);
   }
 </style>

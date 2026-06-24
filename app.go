@@ -2,15 +2,40 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os/exec"
+	"runtime"
 	"strings"
+	"time"
 )
+
+func httpGet(url string) ([]byte, error) {
+	client := &http.Client{Timeout: 8 * time.Second}
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("User-Agent", "csm-gui")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("http %d", resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
+}
+
+func jsonUnmarshal(data []byte, v interface{}) error {
+	return json.Unmarshal(data, v)
+}
 
 // App struct
 type App struct {
-	ctx    context.Context
-	ptyMgr *PtyManager
+	ctx     context.Context
+	ptyMgr  *PtyManager
+	version string
 }
 
 // NewApp creates a new App application struct
@@ -139,6 +164,74 @@ func (a *App) DeleteSession(id string) error {
 		return fmt.Errorf("session not found: %s", id)
 	}
 	return deleteSession(s)
+}
+
+// AppVersion returns the embedded build version.
+func (a *App) AppVersion() string {
+	if a.version == "" {
+		return "dev"
+	}
+	return a.version
+}
+
+// UpdateInfo describes the latest release available upstream.
+type UpdateInfo struct {
+	Current     string `json:"current"`
+	Latest      string `json:"latest"`
+	URL         string `json:"url"`
+	HasUpdate   bool   `json:"hasUpdate"`
+	Body        string `json:"body"`
+}
+
+// CheckUpdate queries GitHub for the latest csm-gui release.
+func (a *App) CheckUpdate() (*UpdateInfo, error) {
+	resp, err := httpGet("https://api.github.com/repos/welcomra1n/csm-gui/releases/latest")
+	if err != nil {
+		return nil, fmt.Errorf("network: %w", err)
+	}
+	var raw struct {
+		TagName string `json:"tag_name"`
+		HTMLURL string `json:"html_url"`
+		Body    string `json:"body"`
+	}
+	if err := jsonUnmarshal(resp, &raw); err != nil {
+		return nil, fmt.Errorf("parse: %w", err)
+	}
+	latest := strings.TrimPrefix(raw.TagName, "v")
+	current := strings.TrimPrefix(a.AppVersion(), "v")
+	return &UpdateInfo{
+		Current:   current,
+		Latest:    latest,
+		URL:       raw.HTMLURL,
+		HasUpdate: latest != "" && latest != current && current != "dev",
+		Body:      raw.Body,
+	}, nil
+}
+
+// ApplyUpdate runs the platform's package manager to upgrade csm-gui.
+// Returns the command output (or error).
+func (a *App) ApplyUpdate() (string, error) {
+	if runtime.GOOS == "darwin" {
+		augmentPATH()
+		brew, err := exec.LookPath("brew")
+		if err != nil {
+			brew = resolveViaShell("brew")
+			if brew == "" {
+				return "", fmt.Errorf("brew not found in PATH")
+			}
+		}
+		out, err := exec.Command(brew, "upgrade", "--cask", "csm-gui").CombinedOutput()
+		return string(out), err
+	}
+	if runtime.GOOS == "windows" {
+		scoop, err := exec.LookPath("scoop")
+		if err != nil {
+			return "", fmt.Errorf("scoop not found in PATH")
+		}
+		out, err := exec.Command(scoop, "update", "csm-gui").CombinedOutput()
+		return string(out), err
+	}
+	return "", fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 }
 
 // GetMetadata returns the raw metadata object.
