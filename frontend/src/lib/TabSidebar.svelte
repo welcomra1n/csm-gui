@@ -16,10 +16,27 @@
     }
     tabs.update((arr) => arr.filter((t) => t.id !== id));
   }
+
+  async function closeAll() {
+    const list = $tabs.slice();
+    for (const t of list) {
+      try {
+        await KillPty(t.id);
+      } catch (err) {
+        console.error("kill pty:", err);
+      }
+    }
+    tabs.set([]);
+  }
 </script>
 
 <div class="sidebar">
-  <div class="header">SESSIONS · {$tabs.length}</div>
+  <div class="header">
+    <span>SESSIONS · {$tabs.length}</span>
+    {#if $tabs.length > 0}
+      <button class="close-all" on:click={closeAll} title="close all tabs">✕ all</button>
+    {/if}
+  </div>
   {#if $tabs.length === 0}
     <div class="empty">no open sessions</div>
   {:else}
@@ -48,11 +65,27 @@
   }
 
   .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 6px 10px;
     font-size: var(--ui-fs-xs);
     color: var(--fg-mute);
     letter-spacing: 1px;
     border-bottom: 1px solid var(--border);
+  }
+
+  .close-all {
+    color: var(--fg-mute);
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    font-size: calc(var(--ui-fs-xs) - 1px);
+  }
+
+  .close-all:hover {
+    color: var(--accent-action);
+    border-color: var(--accent-action);
   }
 
   .empty {
