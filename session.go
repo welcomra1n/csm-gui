@@ -713,7 +713,7 @@ func discoverSessions() []*Session {
 			}
 			continue
 		}
-		if s.MessageCount > 0 && (s.UserMsgCount > 1 || s.AsstMsgCount > 1) {
+		if s.MessageCount > 0 && s.UserMsgCount >= 1 && s.AsstMsgCount >= 1 {
 			valid = append(valid, s)
 		}
 	}
