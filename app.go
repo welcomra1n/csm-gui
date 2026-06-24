@@ -187,7 +187,7 @@ func (a *App) GenerateRecap(id string, force bool) (string, error) {
 		cmd = rp
 	}
 
-	prompt := "한국어로 이 세션을 2-3문장으로 간결하게 요약해줘. 핵심 주제와 결론만 (불릿/포맷 없이 평문):\n\n" + ctx.String()
+	prompt := "한국어로 정확히 세 줄로 이 세션을 요약해줘. 각 줄은 한 문장씩. 형식:\n1. [주제]\n2. [한 일/논의한 것]\n3. [결론/다음 단계]\n\n세션:\n" + ctx.String()
 
 	out, err := exec.Command(cmd, "-p", prompt, "--dangerously-skip-permissions").Output()
 	if err != nil {

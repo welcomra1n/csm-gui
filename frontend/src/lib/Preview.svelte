@@ -3,27 +3,7 @@
   import ProviderIcon from "./ProviderIcon.svelte";
   import { marked } from "marked";
   import DOMPurify from "dompurify";
-  import { GenerateRecap } from "../../wailsjs/go/main/App.js";
-
   $: selected = $sessions.find((s) => s.id === $selectedSessionId);
-
-  let generating = false;
-
-  async function regenerate() {
-    if (!selected) return;
-    generating = true;
-    try {
-      const recap = await GenerateRecap(selected.id, true);
-      // mutate local sessions array to update UI
-      sessions.update((arr) =>
-        arr.map((s) => (s.id === selected!.id ? { ...s, recap } : s))
-      );
-    } catch (e: any) {
-      console.error("recap:", e);
-    } finally {
-      generating = false;
-    }
-  }
 
   function renderMarkdown(src: string): string {
     if (!src) return "";
@@ -56,21 +36,12 @@
         <span class="branch">⎇ {selected.gitBranch}</span>
       {/if}
     </div>
-    <div class="msg recap-section">
-      <div class="label-row">
-        <span class="label recap-label">RECAP</span>
-        <button class="regen" on:click={regenerate} disabled={generating} title="regenerate recap">
-          {generating ? "…" : "↻"}
-        </button>
-      </div>
-      {#if selected.recap}
+    {#if selected.recap}
+      <div class="msg recap-section">
+        <div class="label recap-label">RECAP</div>
         <div class="content md">{@html renderMarkdown(selected.recap)}</div>
-      {:else if generating}
-        <div class="empty">generating recap…</div>
-      {:else}
-        <div class="empty">click ↻ to generate</div>
-      {/if}
-    </div>
+      </div>
+    {/if}
 
     {#if selected.firstUserMsg}
       <div class="msg">

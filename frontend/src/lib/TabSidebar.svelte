@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tabs, activeTabId } from "./store";
-  import { KillPty, RenameAlias } from "../../wailsjs/go/main/App.js";
+  import { KillPty, RenameAlias, GenerateRecap } from "../../wailsjs/go/main/App.js";
   import ProviderIcon from "./ProviderIcon.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import PromptModal from "./PromptModal.svelte";
@@ -58,12 +58,16 @@
 
   async function closeTab(e: MouseEvent, id: string) {
     e.stopPropagation();
+    const tab = $tabs.find((t) => t.id === id);
     try {
       await KillPty(id);
     } catch (err) {
       console.error("kill pty:", err);
     }
     tabs.update((arr) => arr.filter((t) => t.id !== id));
+    if (tab?.sessionId) {
+      GenerateRecap(tab.sessionId, true).catch((e) => console.warn("recap:", e));
+    }
   }
 
   let draggedId: string | null = null;
@@ -102,6 +106,9 @@
         await KillPty(t.id);
       } catch (err) {
         console.error("kill pty:", err);
+      }
+      if (t.sessionId) {
+        GenerateRecap(t.sessionId, true).catch((e) => console.warn("recap:", e));
       }
     }
     tabs.set([]);
