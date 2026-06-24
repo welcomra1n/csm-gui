@@ -21,6 +21,14 @@
   }
 
   async function openSession(s: Session) {
+    // Already open? focus existing tab
+    const existing = $tabs.find((t) => t.sessionId === s.id);
+    if (existing) {
+      activeTabId.set(existing.id);
+      statusText.set(`focus: ${s.projectName}`);
+      return;
+    }
+
     const tabId = nextTabId();
     const isCodex = s.provider === "codex";
     const cmd = isCodex ? "codex" : "claude";
@@ -42,9 +50,36 @@
         },
       ]);
       activeTabId.set(tabId);
-      statusText.set(`열림: ${s.projectName}`);
+      statusText.set(`open: ${s.projectName}`);
     } catch (e: any) {
-      statusText.set(`실패: ${e?.message || e}`);
+      statusText.set(`fail: ${e?.message || e}`);
+    }
+  }
+
+  async function newSession(provider: "claude" | "codex") {
+    const tabId = nextTabId();
+    const cmd = provider === "codex" ? "codex" : "claude";
+    const args = provider === "codex"
+      ? ["--sandbox", "danger-full-access"]
+      : ["--dangerously-skip-permissions"];
+
+    // Use home dir for new sessions
+    const dir = "";
+
+    try {
+      await StartPty(tabId, cmd, dir, args, 80, 24);
+      tabs.update((arr) => [
+        ...arr,
+        {
+          id: tabId,
+          title: `new ${provider}`,
+          provider,
+        },
+      ]);
+      activeTabId.set(tabId);
+      statusText.set(`new ${provider} session`);
+    } catch (e: any) {
+      statusText.set(`fail: ${e?.message || e}`);
     }
   }
 
@@ -94,11 +129,20 @@
   <div class="searchbox">
     <input
       type="text"
-      placeholder="세션 검색…"
+      placeholder="search…"
       bind:value={filter}
       autocomplete="off"
     />
-    <button class="refresh" on:click={refresh} title="새로고침">↻</button>
+    <button class="refresh" on:click={refresh} title="refresh">↻</button>
+  </div>
+
+  <div class="new-row">
+    <button class="new-btn claude" on:click={() => newSession("claude")} title="new claude session">
+      <ProviderIcon provider="claude" size={11} /> + new claude
+    </button>
+    <button class="new-btn codex" on:click={() => newSession("codex")} title="new codex session">
+      <ProviderIcon provider="codex" size={11} /> + new codex
+    </button>
   </div>
 
   <div class="list">
@@ -198,6 +242,36 @@
   .refresh:hover {
     background: var(--bg-hover);
     color: var(--fg);
+  }
+
+  .new-row {
+    display: flex;
+    gap: 4px;
+    padding: 4px 6px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .new-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px;
+    font-size: 10px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--fg-dim);
+  }
+
+  .new-btn.claude:hover {
+    border-color: var(--accent-claude);
+    color: var(--accent-claude);
+  }
+
+  .new-btn.codex:hover {
+    border-color: var(--accent-codex);
+    color: var(--accent-codex);
   }
 
   .list {

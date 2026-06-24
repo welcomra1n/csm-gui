@@ -31,6 +31,15 @@ func (p Provider) Label() string {
 	}
 }
 
+func (p Provider) MarshalJSON() ([]byte, error) {
+	switch p {
+	case ProviderCodex:
+		return []byte(`"codex"`), nil
+	default:
+		return []byte(`"claude"`), nil
+	}
+}
+
 // ── Core types ────────────────────────────────────────────────────────────────
 
 type Session struct {
@@ -698,6 +707,12 @@ func discoverSessions() []*Session {
 
 	valid := out[:0]
 	for _, s := range out {
+		if s.Provider == ProviderCodex {
+			if s.MessageCount > 0 {
+				valid = append(valid, s)
+			}
+			continue
+		}
 		if s.MessageCount > 0 && (s.UserMsgCount > 1 || s.AsstMsgCount > 1) {
 			valid = append(valid, s)
 		}

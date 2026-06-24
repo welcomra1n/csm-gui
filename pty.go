@@ -66,6 +66,11 @@ func (a *App) StartPty(tabId, command, dir string, args []string, cols, rows int
 	}
 
 	cmd := p.Command(resolved, args...)
+	if dir == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			dir = home
+		}
+	}
 	cmd.Dir = dir
 
 	env := os.Environ()
