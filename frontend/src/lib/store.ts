@@ -56,6 +56,10 @@ export const rightWidth = writable<number>(isNaN(savedRightW) ? 260 : savedRight
 leftWidth.subscribe((v) => localStorage.setItem("csm-left-w", String(v)));
 rightWidth.subscribe((v) => localStorage.setItem("csm-right-w", String(v)));
 
+const savedPreviewOpen = localStorage.getItem("csm-preview-open");
+export const previewOpen = writable<boolean>(savedPreviewOpen === null ? true : savedPreviewOpen === "1");
+previewOpen.subscribe((v) => localStorage.setItem("csm-preview-open", v ? "1" : "0"));
+
 export const progressActive = writable<number>(0); // counter; >0 = busy
 export function startProgress() { progressActive.update((n) => n + 1); }
 export function endProgress() { progressActive.update((n) => Math.max(0, n - 1)); }

@@ -11,7 +11,7 @@
   let settingsOpen = false;
   let permsOpen = false;
   let updateToast: string | null = null;
-  import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth, progressActive } from "./lib/store";
+  import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth, progressActive, previewOpen } from "./lib/store";
 
   function handleKey(e: KeyboardEvent) {
     const mod = e.metaKey || e.ctrlKey;
@@ -132,12 +132,20 @@
   <div class="splitter right-split" on:mousedown={() => startDrag("right")}></div>
 
   <aside class="right">
-    <div class="right-top">
+    <div class="right-top" class:full={!$previewOpen}>
       <SessionBrowser />
     </div>
-    <div class="right-bottom">
-      <Preview />
-    </div>
+    {#if $previewOpen}
+      <div class="right-bottom">
+        <div class="preview-header">
+          <span>preview</span>
+          <button class="preview-close" on:click={() => previewOpen.set(false)} title="hide preview">×</button>
+        </div>
+        <div class="preview-body">
+          <Preview />
+        </div>
+      </div>
+    {/if}
   </aside>
 
   {#if $progressActive > 0}
@@ -149,6 +157,7 @@
     <span>{$statusText || `${$tabs.length} tabs`}</span>
     <span class="spacer"></span>
     <span class="zoom">{$fontSize}px</span>
+    <button class="gear" on:click={() => previewOpen.update((v) => !v)} title={$previewOpen ? "hide preview" : "show preview"}>{$previewOpen ? "▤" : "▣"}</button>
     <button class="gear" on:click={() => (settingsOpen = true)} title="settings">⚙</button>
   </div>
 </div>
@@ -222,11 +231,55 @@
     flex: 2;
     overflow: hidden;
     border-bottom: 1px solid var(--border-strong);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .right-top.full {
+    flex: 1;
+    border-bottom: none;
   }
 
   .right-bottom {
     flex: 1;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
+    min-height: 0;
+  }
+
+  .preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    font-size: var(--ui-fs-xs);
+    color: var(--fg-mute);
+    background: var(--bg-elev);
+    border-bottom: 1px solid var(--border-strong);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .preview-close {
+    color: var(--fg-mute);
+    font-size: var(--ui-fs);
+    padding: 0 6px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  .preview-close:hover {
+    color: var(--fg);
+  }
+
+  .preview-body {
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
   }
 
   .term-wrap {
