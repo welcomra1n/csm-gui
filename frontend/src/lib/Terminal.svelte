@@ -6,9 +6,16 @@
   import "@xterm/xterm/css/xterm.css";
   import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime.js";
   import { WritePty, ResizePty } from "../../wailsjs/go/main/App.js";
-  import { fontSize } from "./store";
+  import { fontSize, activeTabId } from "./store";
 
   export let tabId: string;
+
+  $: if ($activeTabId === tabId && term && fit) {
+    requestAnimationFrame(() => {
+      doResize();
+      setTimeout(doResize, 50);
+    });
+  }
 
   let containerEl: HTMLDivElement;
   let term: Terminal;
