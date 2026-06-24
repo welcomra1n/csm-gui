@@ -17,6 +17,35 @@
     tabs.update((arr) => arr.filter((t) => t.id !== id));
   }
 
+  let draggedId: string | null = null;
+
+  function onDragStart(e: DragEvent, id: string) {
+    draggedId = id;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+    }
+  }
+
+  function onDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  }
+
+  function onDrop(e: DragEvent, targetId: string) {
+    e.preventDefault();
+    if (!draggedId || draggedId === targetId) return;
+    tabs.update((arr) => {
+      const src = arr.findIndex((t) => t.id === draggedId);
+      const dst = arr.findIndex((t) => t.id === targetId);
+      if (src < 0 || dst < 0) return arr;
+      const next = arr.slice();
+      const [moved] = next.splice(src, 1);
+      next.splice(dst, 0, moved);
+      return next;
+    });
+    draggedId = null;
+  }
+
   async function closeAll() {
     const list = $tabs.slice();
     for (const t of list) {
@@ -45,6 +74,11 @@
         class="tab"
         class:active={$activeTabId === tab.id}
         class:codex={tab.provider === "codex"}
+        class:dragging={draggedId === tab.id}
+        draggable="true"
+        on:dragstart={(e) => onDragStart(e, tab.id)}
+        on:dragover={onDragOver}
+        on:drop={(e) => onDrop(e, tab.id)}
         on:click={() => selectTab(tab.id)}
       >
         <span class="num">{String(i + 1).padStart(2, "0")}</span>
@@ -110,6 +144,10 @@
   .tab:hover {
     background: var(--bg-hover);
     color: var(--fg);
+  }
+
+  .tab.dragging {
+    opacity: 0.4;
   }
 
   .tab.active {

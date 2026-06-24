@@ -1,8 +1,16 @@
 <script lang="ts">
   import { selectedSessionId, sessions } from "./store";
   import ProviderIcon from "./ProviderIcon.svelte";
+  import { marked } from "marked";
+  import DOMPurify from "dompurify";
 
   $: selected = $sessions.find((s) => s.id === $selectedSessionId);
+
+  function renderMarkdown(src: string): string {
+    if (!src) return "";
+    const html = marked.parse(src, { breaks: true, gfm: true }) as string;
+    return DOMPurify.sanitize(html);
+  }
 
   function fmtDate(iso: string): string {
     if (!iso) return "";
@@ -32,7 +40,7 @@
     {#if selected.lastUserMsg}
       <div class="msg">
         <div class="label">LAST MESSAGE</div>
-        <div class="content">{selected.lastUserMsg}</div>
+        <div class="content md">{@html renderMarkdown(selected.lastUserMsg)}</div>
       </div>
     {/if}
   {:else}
@@ -96,6 +104,35 @@
     line-height: 1.4;
     max-height: 200px;
     overflow-y: auto;
+  }
+
+  .msg .content.md :global(p) { margin: 0 0 6px; }
+  .msg .content.md :global(code) {
+    background: var(--bg);
+    color: var(--accent-pinned);
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-size: 0.9em;
+  }
+  .msg .content.md :global(pre) {
+    background: var(--bg);
+    padding: 6px 8px;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .msg .content.md :global(pre code) {
+    background: none;
+    padding: 0;
+    color: var(--fg);
+  }
+  .msg .content.md :global(a) { color: var(--accent-folder); }
+  .msg .content.md :global(strong) { color: var(--fg); }
+  .msg .content.md :global(ul), .msg .content.md :global(ol) { padding-left: 18px; margin: 4px 0; }
+  .msg .content.md :global(h1), .msg .content.md :global(h2), .msg .content.md :global(h3) {
+    color: var(--fg);
+    margin: 8px 0 4px;
+    font-size: var(--ui-fs);
   }
 
   .empty {

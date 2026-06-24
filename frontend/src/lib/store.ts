@@ -12,6 +12,8 @@ const savedZoom = parseFloat(localStorage.getItem("csm-fontsize") || "13");
 export const fontSize = writable<number>(isNaN(savedZoom) ? 13 : savedZoom);
 fontSize.subscribe((v) => localStorage.setItem("csm-fontsize", String(v)));
 
+export const focusSearch = writable<number>(0);
+
 let tabCounter = 0;
 export function nextTabId(): string {
   tabCounter++;

@@ -4,7 +4,7 @@
   import SessionBrowser from "./lib/SessionBrowser.svelte";
   import Terminal from "./lib/Terminal.svelte";
   import Preview from "./lib/Preview.svelte";
-  import { tabs, activeTabId, statusText, fontSize } from "./lib/store";
+  import { tabs, activeTabId, statusText, fontSize, focusSearch } from "./lib/store";
 
   function handleKey(e: KeyboardEvent) {
     const mod = e.metaKey || e.ctrlKey;
@@ -23,6 +23,9 @@
     } else if (mod && e.key === "0") {
       e.preventDefault();
       fontSize.set(13);
+    } else if (mod && (e.key === "f" || e.key === "F")) {
+      e.preventDefault();
+      focusSearch.update((n) => n + 1);
     }
   }
 

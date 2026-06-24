@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { sessions, tabs, activeTabId, nextTabId, statusText, selectedSessionId } from "./store";
+  import { sessions, tabs, activeTabId, nextTabId, statusText, selectedSessionId, focusSearch } from "./store";
   import type { Session } from "./types";
   import {
     ListSessions,
@@ -16,6 +16,12 @@
 
   let filter = "";
   let newMenuOpen = false;
+  let searchEl: HTMLInputElement;
+
+  $: if ($focusSearch && searchEl) {
+    searchEl.focus();
+    searchEl.select();
+  }
   let ctxMenu: { x: number; y: number; session: Session } | null = null;
   let modal:
     | { kind: "rename" | "tag" | "delete"; session: Session; value: string }
@@ -46,6 +52,9 @@
 
   onMount(() => {
     refresh();
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
     const id = setInterval(refresh, 15000);
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
@@ -54,6 +63,16 @@
       window.removeEventListener("focus", onFocus);
     };
   });
+
+  function notify(title: string, body: string) {
+    try {
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(title, { body, silent: true });
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
 
   async function refresh() {
     try {
@@ -72,6 +91,10 @@
       }
       if (completedCount > 0 && prevRunningAgents.size > 0) {
         playDing();
+        // Only show system notification when window not focused
+        if (!document.hasFocus()) {
+          notify("agent done", `${completedCount} subagent${completedCount > 1 ? "s" : ""} completed`);
+        }
       }
       prevRunningAgents = newRunning;
       sessions.set(list || []);
@@ -309,8 +332,9 @@
 <div class="browser">
   <div class="searchbox">
     <input
+      bind:this={searchEl}
       type="text"
-      placeholder="search…"
+      placeholder="search… (⌘F)"
       bind:value={filter}
       autocomplete="off"
     />
