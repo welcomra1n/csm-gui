@@ -244,6 +244,28 @@ func (a *App) DeleteSession(id string) error {
 	return deleteSession(s)
 }
 
+// DeleteSessions trashes many sessions in one scan. Returns count deleted.
+func (a *App) DeleteSessions(ids []string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	wanted := map[string]bool{}
+	for _, id := range ids {
+		wanted[id] = true
+	}
+	// Single fast scan, no detail loading
+	all := discoverSessionsFast()
+	count := 0
+	for _, s := range all {
+		if wanted[s.ID] {
+			if err := deleteSession(s); err == nil {
+				count++
+			}
+		}
+	}
+	return count, nil
+}
+
 // AppVersion returns the embedded build version.
 func (a *App) AppVersion() string {
 	if a.version == "" {

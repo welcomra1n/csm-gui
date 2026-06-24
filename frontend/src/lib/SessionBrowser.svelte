@@ -9,6 +9,7 @@
     RenameAlias,
     SetSessionTag,
     DeleteSession,
+    DeleteSessions,
     SetSessionFolder,
     CreateFolder,
     RenameFolder,
@@ -281,18 +282,16 @@
     const all = [g.head, ...g.rest];
     if (!confirm(`Delete ${all.length} sessions named "${g.head.alias || g.head.projectName}"?`)) return;
     statusText.set(`deleting ${all.length}…`);
-    let ok = 0;
-    for (const s of all) {
-      try {
-        await DeleteSession(s.id);
-        ok++;
-        const tab = $tabs.find((t) => t.sessionId === s.id);
-        if (tab) tabs.update((arr) => arr.filter((t) => t.id !== tab.id));
-      } catch (e) {
-        console.error("delete:", e);
-      }
+    try {
+      const ids = all.map((s) => s.id);
+      const deleted = await DeleteSessions(ids);
+      // Close any open tabs for deleted sessions
+      const idSet = new Set(ids);
+      tabs.update((arr) => arr.filter((t) => !t.sessionId || !idSet.has(t.sessionId)));
+      statusText.set(`deleted ${deleted}/${all.length}`);
+    } catch (e: any) {
+      statusText.set(`fail: ${e?.message || e}`);
     }
-    statusText.set(`deleted ${ok}/${all.length}`);
     await refresh();
   }
 
