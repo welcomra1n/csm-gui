@@ -73,7 +73,7 @@
 
   .title {
     color: var(--fg);
-    font-size: 12px;
+    font-size: var(--ui-fs);
     margin-bottom: 8px;
     letter-spacing: 1px;
   }
@@ -85,7 +85,7 @@
     border-radius: 2px;
     padding: 6px 8px;
     color: var(--fg);
-    font-size: 12px;
+    font-size: var(--ui-fs);
     font-family: inherit;
   }
 
@@ -104,7 +104,7 @@
     padding: 5px 10px;
     border: 1px solid var(--border);
     border-radius: 2px;
-    font-size: 11px;
+    font-size: var(--ui-fs-sm);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -141,7 +141,7 @@
   }
 
   .k {
-    font-size: 9px;
+    font-size: calc(var(--ui-fs-xs) - 1px);
     color: var(--fg-mute);
   }
 </style>

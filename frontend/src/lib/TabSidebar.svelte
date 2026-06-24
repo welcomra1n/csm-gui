@@ -49,7 +49,7 @@
 
   .header {
     padding: 6px 10px;
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
     color: var(--fg-mute);
     letter-spacing: 1px;
     border-bottom: 1px solid var(--border);
@@ -58,7 +58,7 @@
   .empty {
     padding: 14px 10px;
     color: var(--fg-mute);
-    font-size: 11px;
+    font-size: var(--ui-fs-sm);
     text-align: center;
   }
 
@@ -71,7 +71,7 @@
     text-align: left;
     border-left: 2px solid transparent;
     color: var(--fg-dim);
-    font-size: 12px;
+    font-size: var(--ui-fs);
   }
 
   .tab:hover {
@@ -88,7 +88,7 @@
 
   .num {
     color: var(--fg-mute);
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
     width: 16px;
   }
 

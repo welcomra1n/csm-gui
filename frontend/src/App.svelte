@@ -32,10 +32,14 @@
   });
 
   $: activeTab = $tabs.find((t) => t.id === $activeTabId);
-  $: rootStyle = `font-size: ${$fontSize}px;`;
+  $: if (typeof document !== "undefined") {
+    document.documentElement.style.setProperty("--ui-fs", `${$fontSize}px`);
+    document.documentElement.style.setProperty("--ui-fs-sm", `${Math.max($fontSize - 2, 6)}px`);
+    document.documentElement.style.setProperty("--ui-fs-xs", `${Math.max($fontSize - 3, 6)}px`);
+  }
 </script>
 
-<div class="app" style={rootStyle}>
+<div class="app">
   <aside class="left">
     <TabSidebar />
   </aside>
@@ -146,18 +150,18 @@
   .ascii {
     color: var(--fg);
     text-shadow: 0 0 8px var(--fg-mute);
-    font-size: 12px;
+    font-size: var(--ui-fs);
     line-height: 1.2;
   }
 
   .hint {
     color: var(--fg-dim);
-    font-size: 12px;
+    font-size: var(--ui-fs);
   }
 
   .hint.dim {
     color: var(--fg-mute);
-    font-size: 11px;
+    font-size: var(--ui-fs-sm);
   }
 
   .statusbar {
@@ -169,7 +173,7 @@
     border-top: 1px solid var(--border);
     padding: 0 10px;
     line-height: 20px;
-    font-size: 11px;
+    font-size: var(--ui-fs-sm);
     color: var(--fg-dim);
   }
 

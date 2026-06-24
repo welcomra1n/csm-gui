@@ -368,7 +368,7 @@
     border-radius: 2px;
     padding: 3px 6px;
     color: var(--fg);
-    font-size: 12px;
+    font-size: var(--ui-fs);
   }
 
   .searchbox input:focus {
@@ -397,7 +397,7 @@
   .new-btn {
     width: 100%;
     padding: 5px;
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
     letter-spacing: 1px;
     border: 1px solid var(--border);
     border-radius: 2px;
@@ -427,7 +427,7 @@
     gap: 6px;
     width: 100%;
     padding: 6px 10px;
-    font-size: 11px;
+    font-size: var(--ui-fs-sm);
     text-align: left;
     color: var(--fg-dim);
   }
@@ -450,7 +450,7 @@
 
   .group-header {
     padding: 6px 10px 3px;
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
     letter-spacing: 1px;
   }
 
@@ -467,7 +467,7 @@
     text-align: left;
     color: var(--fg-dim);
     position: relative;
-    font-size: 12px;
+    font-size: var(--ui-fs);
   }
 
   .item::before {
@@ -501,7 +501,7 @@
 
   .pin {
     color: var(--accent-pinned);
-    font-size: 9px;
+    font-size: calc(var(--ui-fs-xs) - 1px);
     margin-right: -2px;
   }
 
@@ -513,7 +513,7 @@
 
   .tag {
     color: var(--accent-action);
-    font-size: 9px;
+    font-size: calc(var(--ui-fs-xs) - 1px);
     background: rgba(255, 77, 139, 0.12);
     padding: 1px 4px;
     border-radius: 2px;
@@ -529,13 +529,13 @@
   .time {
     flex: 0 0 auto;
     color: var(--fg-mute);
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
   }
 
   .empty {
     text-align: center;
     color: var(--fg-mute);
     padding: 20px 10px;
-    font-size: 11px;
+    font-size: var(--ui-fs-sm);
   }
 </style>

@@ -55,7 +55,7 @@
     padding: 5px 10px;
     text-align: left;
     color: var(--fg-dim);
-    font-size: 11px;
+    font-size: var(--ui-fs-sm);
   }
 
   .item:hover {
@@ -74,6 +74,6 @@
 
   .key {
     color: var(--fg-mute);
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
   }
 </style>

@@ -45,7 +45,7 @@
     height: 100%;
     overflow-y: auto;
     padding: 8px 10px;
-    font-size: 11px;
+    font-size: var(--ui-fs-sm);
   }
 
   .row {
@@ -63,14 +63,14 @@
   .sub {
     color: var(--fg-mute);
     margin: 2px 0 6px 18px;
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
   }
 
   .meta {
     display: flex;
     gap: 5px;
     color: var(--fg-mute);
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
     margin: 6px 0 10px;
   }
 
@@ -84,7 +84,7 @@
 
   .msg .label {
     color: var(--accent-action);
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
     letter-spacing: 1px;
     margin-bottom: 4px;
   }
@@ -101,6 +101,6 @@
   .empty {
     color: var(--fg-mute);
     padding: 16px 0;
-    font-size: 11px;
+    font-size: var(--ui-fs-sm);
   }
 </style>

@@ -13,6 +13,9 @@
 }
 
 :root {
+    --ui-fs: 13px;
+    --ui-fs-sm: 11px;
+    --ui-fs-xs: 10px;
     --bg: #000000;
     --bg-elev: #0a0a0a;
     --bg-hover: #111111;
@@ -37,7 +40,7 @@ html, body, #app {
     background-color: var(--bg);
     color: var(--fg);
     font-family: "D2Coding", Menlo, Monaco, "Courier New", monospace;
-    font-size: 13px;
+    font-size: var(--ui-fs);
     -webkit-font-smoothing: antialiased;
 }
 
