@@ -6,7 +6,7 @@
   import "@xterm/xterm/css/xterm.css";
   import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime.js";
   import { WritePty, ResizePty } from "../../wailsjs/go/main/App.js";
-  import { fontSize, activeTabId } from "./store";
+  import { fontSize, activeTabId, tabs } from "./store";
 
   export let tabId: string;
 
@@ -103,6 +103,20 @@
     const outputEvent = `pty:output:${tabId}`;
     EventsOn(outputEvent, (data: string) => {
       term.write(data);
+      const now = Date.now();
+      tabs.update((arr) =>
+        arr.map((t) => {
+          if (t.id !== tabId) return t;
+          // If previously idle (>2.5s of silence), this is a new working burst
+          const wasIdle = !t.lastActive || now - t.lastActive > 2500;
+          return {
+            ...t,
+            lastActive: now,
+            state: "working",
+            stateChangedAt: wasIdle ? now : (t.stateChangedAt || now),
+          };
+        }),
+      );
       if (!trustAnswered && /trust.*folder|yes,?\s*proceed|do you trust/i.test(data)) {
         trustAnswered = true;
         setTimeout(() => {

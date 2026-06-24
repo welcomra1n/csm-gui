@@ -10,6 +10,37 @@
   let renaming: Tab | null = null;
   let renameValue = "";
 
+  // Tick periodically so idle detection re-evaluates
+  let nowTick = Date.now();
+  setInterval(() => (nowTick = Date.now()), 1000);
+
+  const IDLE_AFTER_MS = 2500;
+
+  function tabState(tab: Tab): "working" | "idle" | "unknown" {
+    if (!tab.lastActive) return "unknown";
+    return nowTick - tab.lastActive < IDLE_AFTER_MS ? "working" : "idle";
+  }
+
+  function fmtDuration(ms: number): string {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ${s % 60}s`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m`;
+  }
+
+  function tooltip(tab: Tab): string {
+    const st = tabState(tab);
+    if (st === "unknown") return tab.title;
+    if (st === "idle") {
+      const idleSince = (tab.lastActive || nowTick) + IDLE_AFTER_MS;
+      return `${tab.title}\n쉬는 중 · ${fmtDuration(nowTick - idleSince)}`;
+    }
+    const burstStart = tab.stateChangedAt || tab.lastActive || nowTick;
+    return `${tab.title}\n작업 중 · ${fmtDuration(nowTick - burstStart)}`;
+  }
+
   function openContext(e: MouseEvent, tab: Tab) {
     e.preventDefault();
     e.stopPropagation();
@@ -148,11 +179,14 @@
     <div class="empty">no open sessions</div>
   {:else}
     {#each $tabs as tab, i (tab.id)}
+      {@const st = tabState(tab)}
       <button
         class="tab"
         class:active={$activeTabId === tab.id}
         class:codex={tab.provider === "codex"}
         class:dragging={draggedId === tab.id}
+        class:working={st === "working"}
+        class:idle={st === "idle"}
         draggable="true"
         on:dragstart={(e) => onDragStart(e, tab.id)}
         on:dragover={onDragOver}
@@ -160,10 +194,12 @@
         on:click={() => selectTab(tab.id)}
         on:contextmenu={(e) => openContext(e, tab)}
         on:dblclick={() => { renameValue = tab.title; renaming = tab; }}
+        title={tooltip(tab)}
       >
         <span class="num">{String(i + 1).padStart(2, "0")}</span>
+        <span class="state-dot" class:working={st === "working"} class:idle={st === "idle"}></span>
         <span class="icon"><ProviderIcon provider={tab.provider || "claude"} size={12} /></span>
-        <span class="title" title={tab.title}>{tab.title}</span>
+        <span class="title">{tab.title}</span>
         <span class="close" on:click={(e) => closeTab(e, tab.id)}>×</span>
       </button>
     {/each}
@@ -262,6 +298,29 @@
     color: var(--fg-mute);
     font-size: var(--ui-fs-xs);
     width: 16px;
+  }
+
+  .state-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--fg-mute);
+  }
+
+  .state-dot.working {
+    background: var(--accent-pinned);
+    box-shadow: 0 0 5px var(--accent-pinned);
+    animation: working-pulse 0.8s ease-in-out infinite;
+  }
+
+  .state-dot.idle {
+    background: var(--fg-mute);
+  }
+
+  @keyframes working-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
   }
 
   .icon {

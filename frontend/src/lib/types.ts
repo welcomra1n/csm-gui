@@ -30,6 +30,9 @@ export interface Tab {
   title: string;
   sessionId?: string;
   provider?: string;
+  lastActive?: number;
+  stateChangedAt?: number;
+  state?: "working" | "idle";
 }
 
 export type SidebarMode = "tabs" | "browser";
