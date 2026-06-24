@@ -31,7 +31,7 @@
   onMount(() => {
     term = new Terminal({
       fontFamily:
-        'Menlo, Monaco, "Courier New", monospace, "Apple Color Emoji", "Segoe UI Emoji"',
+        '"D2Coding", Menlo, Monaco, "Courier New", monospace, "Apple Color Emoji", "Segoe UI Emoji"',
       fontSize: 13,
       lineHeight: 1.2,
       theme: {

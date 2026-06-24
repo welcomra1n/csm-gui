@@ -3,20 +3,11 @@
   import TabSidebar from "./lib/TabSidebar.svelte";
   import SessionBrowser from "./lib/SessionBrowser.svelte";
   import Terminal from "./lib/Terminal.svelte";
-  import { tabs, activeTabId, sidebarMode, statusText } from "./lib/store";
-
-  function toggleMode() {
-    sidebarMode.update((m) => (m === "tabs" ? "browser" : "tabs"));
-  }
+  import Preview from "./lib/Preview.svelte";
+  import { tabs, activeTabId, statusText } from "./lib/store";
 
   function handleKey(e: KeyboardEvent) {
-    if (e.key === "F1") {
-      e.preventDefault();
-      toggleMode();
-    } else if (e.key === "F2") {
-      e.preventDefault();
-      sidebarMode.set("tabs");
-    } else if (e.ctrlKey && (e.key === "w" || e.key === "W")) {
+    if (e.ctrlKey && (e.key === "w" || e.key === "W")) {
       const id = $activeTabId;
       if (id) {
         e.preventDefault();
@@ -34,33 +25,11 @@
 </script>
 
 <div class="app">
-  <aside class="sidebar">
-    <div class="mode-toggle">
-      <button
-        class:active={$sidebarMode === "tabs"}
-        on:click={() => sidebarMode.set("tabs")}
-        title="F2"
-      >
-        탭 ({$tabs.length})
-      </button>
-      <button
-        class:active={$sidebarMode === "browser"}
-        on:click={() => sidebarMode.set("browser")}
-        title="F1"
-      >
-        세션 찾기
-      </button>
-    </div>
-    <div class="sidebar-content">
-      {#if $sidebarMode === "tabs"}
-        <TabSidebar />
-      {:else}
-        <SessionBrowser />
-      {/if}
-    </div>
+  <aside class="left">
+    <TabSidebar />
   </aside>
 
-  <main class="main">
+  <main class="center">
     {#each $tabs as tab (tab.id)}
       <div class="term-wrap" class:visible={tab.id === $activeTabId}>
         <Terminal tabId={tab.id} />
@@ -68,11 +37,20 @@
     {/each}
     {#if !activeTab}
       <div class="placeholder">
-        <div>세션 찾기에서 세션을 선택하세요</div>
-        <div class="hint">F1: 모드 전환 · F2: 탭 보기 · Ctrl+W: 탭 닫기</div>
+        <div>오른쪽에서 세션을 선택하세요</div>
+        <div class="hint">Ctrl+W: 탭 닫기</div>
       </div>
     {/if}
   </main>
+
+  <aside class="right">
+    <div class="right-top">
+      <SessionBrowser />
+    </div>
+    <div class="right-bottom">
+      <Preview />
+    </div>
+  </aside>
 
   <div class="statusbar">{$statusText || `${$tabs.length}개 탭 열림`}</div>
 </div>
@@ -80,56 +58,46 @@
 <style>
   .app {
     display: grid;
-    grid-template-columns: 260px 1fr;
+    grid-template-columns: 220px 1fr 280px;
     grid-template-rows: 1fr 22px;
     grid-template-areas:
-      "sidebar main"
-      "status status";
+      "left center right"
+      "status status status";
     height: 100vh;
     width: 100vw;
   }
 
-  .sidebar {
-    grid-area: sidebar;
-    display: flex;
-    flex-direction: column;
+  .left {
+    grid-area: left;
     background: #1f1f23;
     border-right: 1px solid #2a2a2e;
     overflow: hidden;
   }
 
-  .mode-toggle {
-    display: flex;
-    background: #18181b;
-    border-bottom: 1px solid #2a2a2e;
-  }
-
-  .mode-toggle button {
-    flex: 1;
-    padding: 8px;
-    color: #888;
-    font-size: 12px;
-    border-bottom: 2px solid transparent;
-  }
-
-  .mode-toggle button:hover {
-    color: #e6e6e6;
-  }
-
-  .mode-toggle button.active {
-    color: #e6e6e6;
-    border-bottom-color: #4a9eff;
-  }
-
-  .sidebar-content {
-    flex: 1;
+  .center {
+    grid-area: center;
+    position: relative;
+    background: #1b1b1f;
     overflow: hidden;
   }
 
-  .main {
-    grid-area: main;
-    position: relative;
-    background: #1b1b1f;
+  .right {
+    grid-area: right;
+    display: flex;
+    flex-direction: column;
+    background: #1f1f23;
+    border-left: 1px solid #2a2a2e;
+    overflow: hidden;
+  }
+
+  .right-top {
+    flex: 2;
+    overflow: hidden;
+    border-bottom: 1px solid #2a2a2e;
+  }
+
+  .right-bottom {
+    flex: 1;
     overflow: hidden;
   }
 

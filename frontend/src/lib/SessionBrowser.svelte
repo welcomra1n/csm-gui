@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { sessions, tabs, activeTabId, nextTabId, statusText } from "./store";
+  import { sessions, tabs, activeTabId, nextTabId, statusText, selectedSessionId } from "./store";
   import type { Session } from "./types";
   import { ListSessions, StartPty } from "../../wailsjs/go/main/App.js";
   import ProviderIcon from "./ProviderIcon.svelte";
@@ -105,7 +105,12 @@
     {#if pinned.length > 0}
       <div class="group-header">📌 고정 ({pinned.length})</div>
       {#each pinned as s (s.id)}
-        <button class="item" on:click={() => openSession(s)}>
+        <button
+          class="item"
+          class:selected={$selectedSessionId === s.id}
+          on:mouseenter={() => selectedSessionId.set(s.id)}
+          on:click={() => openSession(s)}
+        >
           <span class="icon"><ProviderIcon provider={s.provider} /></span>
           <span class="name">{s.alias || s.projectName}</span>
           <span class="time">{fmtTime(s.modTime)}</span>
@@ -116,7 +121,12 @@
     {#each folders as [folderName, items] (folderName)}
       <div class="group-header">📁 {folderName} ({items.length})</div>
       {#each items as s (s.id)}
-        <button class="item" on:click={() => openSession(s)}>
+        <button
+          class="item"
+          class:selected={$selectedSessionId === s.id}
+          on:mouseenter={() => selectedSessionId.set(s.id)}
+          on:click={() => openSession(s)}
+        >
           <span class="icon"><ProviderIcon provider={s.provider} /></span>
           <span class="name">{s.alias || s.projectName}</span>
           <span class="time">{fmtTime(s.modTime)}</span>
@@ -127,7 +137,12 @@
     {#if regular.length > 0}
       <div class="group-header">📂 일반 ({regular.length})</div>
       {#each regular as s (s.id)}
-        <button class="item" on:click={() => openSession(s)}>
+        <button
+          class="item"
+          class:selected={$selectedSessionId === s.id}
+          on:mouseenter={() => selectedSessionId.set(s.id)}
+          on:click={() => openSession(s)}
+        >
           <span class="icon"><ProviderIcon provider={s.provider} /></span>
           <span class="name">{s.alias || s.projectName}</span>
           <span class="time">{fmtTime(s.modTime)}</span>
@@ -212,7 +227,7 @@
     background: #2a2a2e;
   }
 
-  .item:hover {
+  .item:hover, .item.selected {
     background: #2a2a2e;
     color: #e6e6e6;
   }

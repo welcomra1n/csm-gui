@@ -6,6 +6,7 @@ export const activeTabId = writable<string | null>(null);
 export const sessions = writable<Session[]>([]);
 export const sidebarMode = writable<SidebarMode>("tabs");
 export const statusText = writable<string>("");
+export const selectedSessionId = writable<string | null>(null);
 
 let tabCounter = 0;
 export function nextTabId(): string {

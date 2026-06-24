@@ -1,3 +1,17 @@
+@font-face {
+    font-family: "D2Coding";
+    font-style: normal;
+    font-weight: 400;
+    src: url("assets/fonts/D2Coding.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "D2Coding";
+    font-style: normal;
+    font-weight: 700;
+    src: url("assets/fonts/D2Coding-Bold.ttf") format("truetype");
+}
+
 html, body, #app {
     margin: 0;
     padding: 0;
@@ -6,7 +20,7 @@ html, body, #app {
     overflow: hidden;
     background-color: #1b1b1f;
     color: #e6e6e6;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-family: "D2Coding", Menlo, Monaco, "Courier New", monospace;
     font-size: 13px;
 }
 
@@ -25,4 +39,8 @@ button {
 
 button:focus, input:focus {
     outline: none;
+}
+
+input {
+    font-family: inherit;
 }
