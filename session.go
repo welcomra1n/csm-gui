@@ -42,6 +42,14 @@ func (p Provider) MarshalJSON() ([]byte, error) {
 
 // ── Core types ────────────────────────────────────────────────────────────────
 
+type Subagent struct {
+	ToolUseID    string `json:"toolUseId"`
+	SubagentType string `json:"subagentType"`
+	Description  string `json:"description"`
+	Completed    bool   `json:"completed"`
+}
+
+
 type Session struct {
 	ID           string   `json:"id"`
 	ProjectDir   string   `json:"projectDir"`
@@ -68,6 +76,7 @@ type Session struct {
 	Loaded       bool     `json:"loaded"`
 	Tags         []string `json:"tags"`
 	Folder       string   `json:"folder"`
+	Subagents    []Subagent `json:"subagents"`
 }
 
 type Message struct {
@@ -97,6 +106,23 @@ type msgUsage struct {
 type contentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
+}
+
+type toolUseBlock struct {
+	Type  string          `json:"type"`
+	ID    string          `json:"id"`
+	Name  string          `json:"name"`
+	Input json.RawMessage `json:"input"`
+}
+
+type toolResultBlock struct {
+	Type      string `json:"type"`
+	ToolUseID string `json:"tool_use_id"`
+}
+
+type taskInput struct {
+	Description  string `json:"description"`
+	SubagentType string `json:"subagent_type"`
 }
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
@@ -167,6 +193,50 @@ func cleanMeta(s string) string {
 		s = strings.ReplaceAll(s, tag, "")
 	}
 	return strings.TrimSpace(s)
+}
+
+func parseSubagents(raw json.RawMessage, sess *Session) {
+	if len(raw) == 0 || raw[0] != '[' {
+		return
+	}
+	var blocks []json.RawMessage
+	if json.Unmarshal(raw, &blocks) != nil {
+		return
+	}
+	for _, b := range blocks {
+		var head struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(b, &head) != nil {
+			continue
+		}
+		switch head.Type {
+		case "tool_use":
+			var tu toolUseBlock
+			if json.Unmarshal(b, &tu) != nil || tu.Name != "Task" {
+				continue
+			}
+			var in taskInput
+			json.Unmarshal(tu.Input, &in)
+			sess.Subagents = append(sess.Subagents, Subagent{
+				ToolUseID:    tu.ID,
+				SubagentType: in.SubagentType,
+				Description:  in.Description,
+				Completed:    false,
+			})
+		case "tool_result":
+			var tr toolResultBlock
+			if json.Unmarshal(b, &tr) != nil || tr.ToolUseID == "" {
+				continue
+			}
+			for i := range sess.Subagents {
+				if sess.Subagents[i].ToolUseID == tr.ToolUseID {
+					sess.Subagents[i].Completed = true
+					break
+				}
+			}
+		}
+	}
 }
 
 func extractText(raw json.RawMessage) string {
@@ -274,6 +344,10 @@ func loadSessionDetail(sess *Session) {
 			sess.InputTokens += env.Usage.InputTokens
 			sess.OutputTokens += env.Usage.OutputTokens
 		}
+
+		// Parse subagents (Task tool uses + matching tool_results)
+		parseSubagents(env.Content, sess)
+
 		text := extractText(env.Content)
 		if text == "" {
 			continue

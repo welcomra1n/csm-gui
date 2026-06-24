@@ -21,6 +21,29 @@
     | { kind: "rename" | "tag" | "delete"; session: Session; value: string }
     | null = null;
 
+  let prevRunningAgents = new Set<string>();
+  let audioCtx: AudioContext | null = null;
+
+  function playDing() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.setValueAtTime(880, t);
+      osc.frequency.exponentialRampToValueAtTime(1320, t + 0.08);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.15, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      osc.start(t);
+      osc.stop(t + 0.35);
+    } catch (e) {
+      // ignore
+    }
+  }
+
   onMount(() => {
     refresh();
     const id = setInterval(refresh, 15000);
@@ -35,6 +58,22 @@
   async function refresh() {
     try {
       const list = await ListSessions();
+      // Detect newly completed subagents
+      const newRunning = new Set<string>();
+      for (const s of list || []) {
+        for (const a of s.subagents || []) {
+          if (!a.completed) newRunning.add(a.toolUseId);
+        }
+      }
+      // Anything previously running that is no longer running = completed
+      let completedCount = 0;
+      for (const id of prevRunningAgents) {
+        if (!newRunning.has(id)) completedCount++;
+      }
+      if (completedCount > 0 && prevRunningAgents.size > 0) {
+        playDing();
+      }
+      prevRunningAgents = newRunning;
       sessions.set(list || []);
     } catch (e) {
       console.error("ListSessions:", e);
@@ -261,84 +300,117 @@
     {#if pinned.length > 0}
       <div class="group-header pinned">📌 PINNED · {pinned.length}</div>
       {#each pinned as s (s.id)}
-        <button
-          class="item"
-          class:selected={$selectedSessionId === s.id}
-          class:codex={s.provider === "codex"}
-          class:pinned={s.pinned}
-          class:active={openIds.has(s.id)}
-          on:mouseenter={() => selectedSessionId.set(s.id)}
-          on:click={() => openSession(s)}
-          on:contextmenu={(e) => openContext(e, s)}
-          on:keydown={(e) => handleSessionKey(e, s)}
-        >
-          {#if openIds.has(s.id)}<span class="live-dot"></span>{/if}
-          {#if s.pinned}<span class="pin">★</span>{/if}
-          <span class="icon"><ProviderIcon provider={s.provider} /></span>
-          <span class="name">{s.alias || s.projectName}</span>
-          {#if s.tags && s.tags.length > 0}
-            <span class="tags">
-              {#each s.tags as t}<span class="tag">#{t}</span>{/each}
-            </span>
+        <div class="session-block">
+          <button
+            class="item"
+            class:selected={$selectedSessionId === s.id}
+            class:codex={s.provider === "codex"}
+            class:pinned={s.pinned}
+            class:active={openIds.has(s.id)}
+            on:mouseenter={() => selectedSessionId.set(s.id)}
+            on:click={() => openSession(s)}
+            on:contextmenu={(e) => openContext(e, s)}
+            on:keydown={(e) => handleSessionKey(e, s)}
+          >
+            {#if openIds.has(s.id)}<span class="live-dot"></span>{/if}
+            {#if s.pinned}<span class="pin">★</span>{/if}
+            <span class="icon"><ProviderIcon provider={s.provider} /></span>
+            <span class="name">{s.alias || s.projectName}</span>
+            {#if s.tags && s.tags.length > 0}
+              <span class="tags">
+                {#each s.tags as t}<span class="tag">#{t}</span>{/each}
+              </span>
+            {/if}
+            <span class="time">{fmtTime(s.modTime)}</span>
+          </button>
+          {#if s.subagents && s.subagents.length > 0}
+            {#each s.subagents.slice(-5) as a (a.toolUseId)}
+              <div class="agent" class:running={!a.completed}>
+                <span class="agent-status">{a.completed ? "✓" : "◐"}</span>
+                <span class="agent-name">{a.subagentType || "agent"}</span>
+                <span class="agent-desc">{a.description || ""}</span>
+              </div>
+            {/each}
           {/if}
-          <span class="time">{fmtTime(s.modTime)}</span>
-        </button>
+        </div>
       {/each}
     {/if}
 
     {#each folders as [folderName, items] (folderName)}
       <div class="group-header folder">📁 {folderName.toUpperCase()} · {items.length}</div>
       {#each items as s (s.id)}
-        <button
-          class="item"
-          class:selected={$selectedSessionId === s.id}
-          class:codex={s.provider === "codex"}
-          class:pinned={s.pinned}
-          class:active={openIds.has(s.id)}
-          on:mouseenter={() => selectedSessionId.set(s.id)}
-          on:click={() => openSession(s)}
-          on:contextmenu={(e) => openContext(e, s)}
-          on:keydown={(e) => handleSessionKey(e, s)}
-        >
-          {#if openIds.has(s.id)}<span class="live-dot"></span>{/if}
-          {#if s.pinned}<span class="pin">★</span>{/if}
-          <span class="icon"><ProviderIcon provider={s.provider} /></span>
-          <span class="name">{s.alias || s.projectName}</span>
-          {#if s.tags && s.tags.length > 0}
-            <span class="tags">
-              {#each s.tags as t}<span class="tag">#{t}</span>{/each}
-            </span>
+        <div class="session-block">
+          <button
+            class="item"
+            class:selected={$selectedSessionId === s.id}
+            class:codex={s.provider === "codex"}
+            class:pinned={s.pinned}
+            class:active={openIds.has(s.id)}
+            on:mouseenter={() => selectedSessionId.set(s.id)}
+            on:click={() => openSession(s)}
+            on:contextmenu={(e) => openContext(e, s)}
+            on:keydown={(e) => handleSessionKey(e, s)}
+          >
+            {#if openIds.has(s.id)}<span class="live-dot"></span>{/if}
+            {#if s.pinned}<span class="pin">★</span>{/if}
+            <span class="icon"><ProviderIcon provider={s.provider} /></span>
+            <span class="name">{s.alias || s.projectName}</span>
+            {#if s.tags && s.tags.length > 0}
+              <span class="tags">
+                {#each s.tags as t}<span class="tag">#{t}</span>{/each}
+              </span>
+            {/if}
+            <span class="time">{fmtTime(s.modTime)}</span>
+          </button>
+          {#if s.subagents && s.subagents.length > 0}
+            {#each s.subagents.slice(-5) as a (a.toolUseId)}
+              <div class="agent" class:running={!a.completed}>
+                <span class="agent-status">{a.completed ? "✓" : "◐"}</span>
+                <span class="agent-name">{a.subagentType || "agent"}</span>
+                <span class="agent-desc">{a.description || ""}</span>
+              </div>
+            {/each}
           {/if}
-          <span class="time">{fmtTime(s.modTime)}</span>
-        </button>
+        </div>
       {/each}
     {/each}
 
     {#if regular.length > 0}
       <div class="group-header normal">📂 ALL · {regular.length}</div>
       {#each regular as s (s.id)}
-        <button
-          class="item"
-          class:selected={$selectedSessionId === s.id}
-          class:codex={s.provider === "codex"}
-          class:pinned={s.pinned}
-          class:active={openIds.has(s.id)}
-          on:mouseenter={() => selectedSessionId.set(s.id)}
-          on:click={() => openSession(s)}
-          on:contextmenu={(e) => openContext(e, s)}
-          on:keydown={(e) => handleSessionKey(e, s)}
-        >
-          {#if openIds.has(s.id)}<span class="live-dot"></span>{/if}
-          {#if s.pinned}<span class="pin">★</span>{/if}
-          <span class="icon"><ProviderIcon provider={s.provider} /></span>
-          <span class="name">{s.alias || s.projectName}</span>
-          {#if s.tags && s.tags.length > 0}
-            <span class="tags">
-              {#each s.tags as t}<span class="tag">#{t}</span>{/each}
-            </span>
+        <div class="session-block">
+          <button
+            class="item"
+            class:selected={$selectedSessionId === s.id}
+            class:codex={s.provider === "codex"}
+            class:pinned={s.pinned}
+            class:active={openIds.has(s.id)}
+            on:mouseenter={() => selectedSessionId.set(s.id)}
+            on:click={() => openSession(s)}
+            on:contextmenu={(e) => openContext(e, s)}
+            on:keydown={(e) => handleSessionKey(e, s)}
+          >
+            {#if openIds.has(s.id)}<span class="live-dot"></span>{/if}
+            {#if s.pinned}<span class="pin">★</span>{/if}
+            <span class="icon"><ProviderIcon provider={s.provider} /></span>
+            <span class="name">{s.alias || s.projectName}</span>
+            {#if s.tags && s.tags.length > 0}
+              <span class="tags">
+                {#each s.tags as t}<span class="tag">#{t}</span>{/each}
+              </span>
+            {/if}
+            <span class="time">{fmtTime(s.modTime)}</span>
+          </button>
+          {#if s.subagents && s.subagents.length > 0}
+            {#each s.subagents.slice(-5) as a (a.toolUseId)}
+              <div class="agent" class:running={!a.completed}>
+                <span class="agent-status">{a.completed ? "✓" : "◐"}</span>
+                <span class="agent-name">{a.subagentType || "agent"}</span>
+                <span class="agent-desc">{a.description || ""}</span>
+              </div>
+            {/each}
           {/if}
-          <span class="time">{fmtTime(s.modTime)}</span>
-        </button>
+        </div>
       {/each}
     {/if}
 
@@ -548,6 +620,62 @@
   @keyframes pulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.3; transform: scale(0.7); }
+  }
+
+  .session-block {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .agent {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px 2px 38px;
+    font-size: var(--ui-fs-xs);
+    color: var(--fg-mute);
+    position: relative;
+  }
+
+  .agent::before {
+    content: "";
+    position: absolute;
+    left: 26px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--border);
+  }
+
+  .agent-status {
+    color: var(--fg-dim);
+    flex-shrink: 0;
+  }
+
+  .agent.running .agent-status {
+    color: var(--accent-pinned);
+    display: inline-block;
+    animation: spin 1.2s linear infinite;
+  }
+
+  .agent-name {
+    color: var(--accent-folder);
+    flex-shrink: 0;
+  }
+
+  .agent-desc {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+
+  @keyframes spin {
+    0%   { transform: rotate(0deg); }
+    25%  { transform: rotate(90deg); }
+    50%  { transform: rotate(180deg); }
+    75%  { transform: rotate(270deg); }
+    100% { transform: rotate(360deg); }
   }
 
   .pin {

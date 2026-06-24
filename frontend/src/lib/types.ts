@@ -1,3 +1,10 @@
+export interface Subagent {
+  toolUseId: string;
+  subagentType: string;
+  description: string;
+  completed: boolean;
+}
+
 export interface Session {
   id: string;
   provider: string;
@@ -15,6 +22,7 @@ export interface Session {
   alias?: string;
   tags?: string[];
   gitBranch?: string;
+  subagents?: Subagent[];
 }
 
 export interface Tab {
