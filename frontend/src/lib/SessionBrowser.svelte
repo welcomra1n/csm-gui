@@ -24,7 +24,7 @@
   }
   let ctxMenu: { x: number; y: number; session: Session } | null = null;
   let modal:
-    | { kind: "rename" | "tag" | "delete"; session: Session; value: string }
+    | { kind: "rename" | "tag"; session: Session; value: string }
     | null = null;
 
   let prevRunningAgents = new Set<string>();
@@ -159,8 +159,20 @@
       { label: "rename alias", action: () => (modal = { kind: "rename", session: s, value: s.alias || "" }), key: "F2" },
       { label: s.pinned ? "unpin" : "pin", action: () => togglePin(s), key: "P" },
       { label: "edit tags", action: () => (modal = { kind: "tag", session: s, value: (s.tags || []).join(", ") }), key: "T" },
-      { label: "delete", action: () => (modal = { kind: "delete", session: s, value: "" }), danger: true, key: "Del" },
+      { label: "delete", action: () => deleteSession(s), danger: true, key: "Del" },
     ];
+  }
+
+  async function deleteSession(s: Session) {
+    try {
+      await DeleteSession(s.id);
+      statusText.set(`deleted: ${s.alias || s.projectName}`);
+      const tab = $tabs.find((t) => t.sessionId === s.id);
+      if (tab) tabs.update((arr) => arr.filter((t) => t.id !== tab.id));
+      await refresh();
+    } catch (e: any) {
+      statusText.set(`fail: ${e?.message || e}`);
+    }
   }
 
   async function togglePin(s: Session) {
@@ -187,14 +199,6 @@
           .filter(Boolean);
         await SetSessionTag(session.id, tags);
         statusText.set(`tagged: ${tags.length} tag(s)`);
-      } else if (kind === "delete") {
-        await DeleteSession(session.id);
-        statusText.set(`deleted: ${session.projectName}`);
-        // Close any open tab for this session
-        const tab = $tabs.find((t) => t.sessionId === session.id);
-        if (tab) {
-          tabs.update((arr) => arr.filter((t) => t.id !== tab.id));
-        }
       }
       modal = null;
       await refresh();
@@ -213,9 +217,9 @@
     } else if (e.key === "t" || e.key === "T") {
       e.preventDefault();
       modal = { kind: "tag", session: s, value: (s.tags || []).join(", ") };
-    } else if (e.key === "Delete" || e.key === "Backspace") {
+    } else if (e.key === "Delete") {
       e.preventDefault();
-      modal = { kind: "delete", session: s, value: "" };
+      deleteSession(s);
     }
   }
 
@@ -515,13 +519,11 @@
   <PromptModal
     title={modal.kind === "rename"
       ? `Rename: ${modal.session.projectName}`
-      : modal.kind === "tag"
-        ? `Tags (comma-separated): ${modal.session.projectName}`
-        : `Delete "${modal.session.projectName}"?`}
+      : `Tags (comma-separated): ${modal.session.projectName}`}
     bind:value={modal.value}
     placeholder={modal.kind === "tag" ? "tag1, tag2" : ""}
-    confirmLabel={modal.kind === "delete" ? "DELETE" : "save"}
-    danger={modal.kind === "delete"}
+    confirmLabel="save"
+    danger={false}
     onConfirm={confirmModal}
     onCancel={() => (modal = null)}
   />
