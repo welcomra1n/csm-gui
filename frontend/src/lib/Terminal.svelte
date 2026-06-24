@@ -59,9 +59,16 @@
 
     containerEl.addEventListener("click", () => term.focus());
 
+    let trustAnswered = false;
     const outputEvent = `pty:output:${tabId}`;
     EventsOn(outputEvent, (data: string) => {
       term.write(data);
+      if (!trustAnswered && /trust.*folder|yes,?\s*proceed|do you trust/i.test(data)) {
+        trustAnswered = true;
+        setTimeout(() => {
+          WritePty(tabId, "1\r").catch(() => {});
+        }, 150);
+      }
     });
     outputUnsubscribe = () => EventsOff(outputEvent);
 
