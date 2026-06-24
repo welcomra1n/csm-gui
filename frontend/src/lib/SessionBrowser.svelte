@@ -499,6 +499,18 @@
   $: pinnedGroups = groupSessions(pinned);
   $: regularGroups = groupSessions(regular);
 
+  const TAG_PALETTE = [
+    "#ff4d8b", "#ffd60a", "#10e0d0", "#4a9eff",
+    "#d976ff", "#88ff88", "#ff7eb6", "#7dffff",
+    "#e9a6ff", "#ffb84d", "#7ec0ff", "#ffe66d",
+  ];
+
+  function tagColor(tag: string): string {
+    let h = 0;
+    for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0;
+    return TAG_PALETTE[h % TAG_PALETTE.length];
+  }
+
   function fmtTime(iso: string): string {
     if (!iso) return "";
     const d = new Date(iso);
@@ -579,7 +591,7 @@
               {/if}
               {#if s.tags && s.tags.length > 0}
                 <span class="tags">
-                  {#each s.tags as t}<span class="tag">#{t}</span>{/each}
+                  {#each s.tags as t}<span class="tag" style="color: {tagColor(t)}; background: {tagColor(t)}22;">#{t}</span>{/each}
                 </span>
               {/if}
               <span class="time">{fmtTime(s.modTime)}</span>
@@ -629,7 +641,7 @@
             <span class="name">{s.alias || s.projectName}</span>
             {#if s.tags && s.tags.length > 0}
               <span class="tags">
-                {#each s.tags as t}<span class="tag">#{t}</span>{/each}
+                {#each s.tags as t}<span class="tag" style="color: {tagColor(t)}; background: {tagColor(t)}22;">#{t}</span>{/each}
               </span>
             {/if}
             <span class="time">{fmtTime(s.modTime)}</span>
@@ -678,7 +690,7 @@
             {/if}
             {#if s.tags && s.tags.length > 0}
               <span class="tags">
-                {#each s.tags as t}<span class="tag">#{t}</span>{/each}
+                {#each s.tags as t}<span class="tag" style="color: {tagColor(t)}; background: {tagColor(t)}22;">#{t}</span>{/each}
               </span>
             {/if}
             <span class="time">{fmtTime(s.modTime)}</span>
