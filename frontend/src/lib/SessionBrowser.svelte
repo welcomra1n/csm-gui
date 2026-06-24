@@ -9,6 +9,11 @@
     RenameAlias,
     SetSessionTag,
     DeleteSession,
+    SetSessionFolder,
+    CreateFolder,
+    RenameFolder,
+    DeleteFolder,
+    ListFolders,
   } from "../../wailsjs/go/main/App.js";
   import ProviderIcon from "./ProviderIcon.svelte";
   import ContextMenu from "./ContextMenu.svelte";
@@ -27,6 +32,88 @@
     | { kind: "rename" | "tag"; session: Session; value: string }
     | null = null;
   let newTitleModal: { provider: "claude" | "codex" | "shell"; value: string } | null = null;
+  let folderModal: { kind: "create" | "rename"; oldName?: string; value: string } | null = null;
+  let folderCtx: { x: number; y: number; folder: string } | null = null;
+  let draggedSession: Session | null = null;
+
+  function onSessionDragStart(e: DragEvent, s: Session) {
+    draggedSession = s;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", s.id);
+    }
+  }
+
+  function onFolderDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  }
+
+  async function onFolderDrop(e: DragEvent, folder: string) {
+    e.preventDefault();
+    if (!draggedSession) return;
+    const s = draggedSession;
+    draggedSession = null;
+    try {
+      await SetSessionFolder(s.id, folder);
+      statusText.set(`${s.alias || s.projectName} → ${folder}`);
+      await refresh();
+    } catch (err: any) {
+      statusText.set(`fail: ${err?.message || err}`);
+    }
+  }
+
+  function openFolderCtx(e: MouseEvent, folder: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    folderCtx = null;
+    const x = e.clientX;
+    const y = e.clientY;
+    setTimeout(() => (folderCtx = { x, y, folder }), 0);
+  }
+
+  function folderMenuItems(folder: string) {
+    return [
+      {
+        label: "rename folder",
+        action: () => (folderModal = { kind: "rename", oldName: folder, value: folder }),
+      },
+      {
+        label: "delete folder",
+        action: () => deleteFolderCmd(folder),
+        danger: true,
+      },
+    ];
+  }
+
+  async function deleteFolderCmd(name: string) {
+    if (!confirm(`Delete folder "${name}"? Sessions inside become unfiled.`)) return;
+    try {
+      await DeleteFolder(name);
+      await refresh();
+      statusText.set(`folder deleted: ${name}`);
+    } catch (e: any) {
+      statusText.set(`fail: ${e?.message || e}`);
+    }
+  }
+
+  async function confirmFolderModal() {
+    if (!folderModal) return;
+    const m = folderModal;
+    folderModal = null;
+    try {
+      if (m.kind === "create") {
+        await CreateFolder(m.value);
+        statusText.set(`folder created: ${m.value}`);
+      } else if (m.kind === "rename" && m.oldName) {
+        await RenameFolder(m.oldName, m.value);
+        statusText.set(`folder: ${m.oldName} → ${m.value}`);
+      }
+      await refresh();
+    } catch (e: any) {
+      statusText.set(`fail: ${e?.message || e}`);
+    }
+  }
 
   let prevRunningAgents = new Set<string>();
   let audioCtx: AudioContext | null = null;
@@ -75,8 +162,19 @@
     }
   }
 
+  let allFolderNames: string[] = [];
+
+  async function refreshFolders() {
+    try {
+      allFolderNames = (await ListFolders()) || [];
+    } catch (e) {
+      console.warn("ListFolders:", e);
+    }
+  }
+
   async function refresh() {
     try {
+      refreshFolders();
       const list = await ListSessions();
       // Detect newly completed subagents
       const newRunning = new Set<string>();
@@ -356,6 +454,10 @@
   $: pinned = filtered.filter((s) => s.pinned);
   $: folders = (() => {
     const map = new Map<string, Session[]>();
+    // seed all known folders so empty ones still show
+    for (const name of allFolderNames) {
+      map.set(name, []);
+    }
     for (const s of filtered) {
       if (s.folder && !s.pinned) {
         const arr = map.get(s.folder) || [];
@@ -425,6 +527,13 @@
     <button class="new-btn" on:click={() => (newMenuOpen = !newMenuOpen)} title="new session">
       + NEW SESSION
     </button>
+    <button
+      class="folder-btn"
+      on:click={() => (folderModal = { kind: "create", value: "" })}
+      title="new folder"
+    >
+      📁+
+    </button>
     {#if newMenuOpen}
       <div class="new-menu">
         <button class="menu-item claude" on:click={() => { newMenuOpen = false; askNewSession("claude"); }}>
@@ -490,7 +599,15 @@
     {/if}
 
     {#each folders as [folderName, items] (folderName)}
-      <div class="group-header folder">📁 {folderName.toUpperCase()} · {items.length}</div>
+      <div
+        class="group-header folder droppable"
+        on:dragover={onFolderDragOver}
+        on:drop={(e) => onFolderDrop(e, folderName)}
+        on:contextmenu={(e) => openFolderCtx(e, folderName)}
+        title="drop session here · right-click for options"
+      >
+        📁 {folderName.toUpperCase()} · {items.length}
+      </div>
       {#each items as s (s.id)}
         <div class="session-block">
           <button
@@ -499,6 +616,8 @@
             class:codex={s.provider === "codex"}
             class:pinned={s.pinned}
             class:active={openIds.has(s.id)}
+            draggable="true"
+            on:dragstart={(e) => onSessionDragStart(e, s)}
             on:mouseenter={() => selectedSessionId.set(s.id)}
             on:click={() => openSession(s)}
             on:contextmenu={(e) => openContext(e, s)}
@@ -541,6 +660,8 @@
             class:pinned={s.pinned}
             class:active={openIds.has(s.id)}
             class:nested={idx > 0}
+            draggable="true"
+            on:dragstart={(e) => onSessionDragStart(e, s)}
             on:mouseenter={() => selectedSessionId.set(s.id)}
             on:click={() => openSession(s)}
             on:contextmenu={(e) => openContext(e, s)}
@@ -617,6 +738,27 @@
   />
 {/if}
 
+{#if folderModal}
+  <PromptModal
+    title={folderModal.kind === "create" ? "New folder" : `Rename folder: ${folderModal.oldName}`}
+    bind:value={folderModal.value}
+    placeholder="folder name"
+    confirmLabel={folderModal.kind === "create" ? "create" : "rename"}
+    danger={false}
+    onConfirm={confirmFolderModal}
+    onCancel={() => (folderModal = null)}
+  />
+{/if}
+
+{#if folderCtx}
+  <ContextMenu
+    x={folderCtx.x}
+    y={folderCtx.y}
+    items={folderMenuItems(folderCtx.folder)}
+    onClose={() => (folderCtx = null)}
+  />
+{/if}
+
 <style>
   .browser {
     display: flex;
@@ -660,17 +802,39 @@
 
   .new-row {
     position: relative;
+    display: flex;
+    gap: 4px;
     padding: 4px 6px 6px;
     border-bottom: 1px solid var(--border);
   }
 
   .new-btn {
-    width: 100%;
+    flex: 1;
     padding: 5px;
     font-size: var(--ui-fs-xs);
     letter-spacing: 1px;
     border: 1px solid var(--border);
     border-radius: 2px;
+    color: var(--fg);
+  }
+
+  .folder-btn {
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--accent-folder);
+    font-size: var(--ui-fs-xs);
+  }
+
+  .folder-btn:hover {
+    border-color: var(--accent-folder);
+  }
+
+  .group-header.droppable {
+    cursor: pointer;
+  }
+
+  .group-header.droppable:hover {
     color: var(--fg);
   }
 

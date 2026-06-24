@@ -141,6 +141,80 @@ func (a *App) SetSessionFolder(id string, folder string) error {
 	return nil
 }
 
+// CreateFolder adds a new empty folder.
+func (a *App) CreateFolder(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("empty name")
+	}
+	meta := loadMetadata()
+	for _, f := range meta.Folders {
+		if f == name {
+			return nil
+		}
+	}
+	meta.Folders = append(meta.Folders, name)
+	saveMetadata(meta)
+	return nil
+}
+
+// RenameFolder renames a folder and migrates all sessions in it.
+func (a *App) RenameFolder(oldName, newName string) error {
+	oldName = strings.TrimSpace(oldName)
+	newName = strings.TrimSpace(newName)
+	if oldName == "" || newName == "" {
+		return fmt.Errorf("empty name")
+	}
+	meta := loadMetadata()
+	if meta.SessionFolders == nil {
+		meta.SessionFolders = make(map[string]string)
+	}
+	for id, f := range meta.SessionFolders {
+		if f == oldName {
+			meta.SessionFolders[id] = newName
+		}
+	}
+	newFolders := []string{}
+	seen := map[string]bool{}
+	for _, f := range meta.Folders {
+		if f == oldName {
+			f = newName
+		}
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		newFolders = append(newFolders, f)
+	}
+	if !seen[newName] {
+		newFolders = append(newFolders, newName)
+	}
+	meta.Folders = newFolders
+	saveMetadata(meta)
+	return nil
+}
+
+// DeleteFolder removes a folder (sessions inside become unfiled).
+func (a *App) DeleteFolder(name string) error {
+	meta := loadMetadata()
+	if meta.SessionFolders != nil {
+		for id, f := range meta.SessionFolders {
+			if f == name {
+				delete(meta.SessionFolders, id)
+			}
+		}
+	}
+	out := meta.Folders[:0]
+	for _, f := range meta.Folders {
+		if f != name {
+			out = append(out, f)
+		}
+	}
+	meta.Folders = out
+	saveMetadata(meta)
+	return nil
+}
+
 // ListFolders returns the list of defined folders.
 func (a *App) ListFolders() []string {
 	meta := loadMetadata()

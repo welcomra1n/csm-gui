@@ -33,6 +33,7 @@ export interface Tab {
   lastActive?: number;
   stateChangedAt?: number;
   state?: "working" | "idle";
+  pinned?: boolean;
 }
 
 export type SidebarMode = "tabs" | "browser";

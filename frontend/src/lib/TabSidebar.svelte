@@ -50,8 +50,16 @@
     setTimeout(() => (ctxMenu = { x, y, tab }), 0);
   }
 
+  function togglePinTab(tab: Tab) {
+    tabs.update((arr) => arr.map((t) => (t.id === tab.id ? { ...t, pinned: !t.pinned } : t)));
+  }
+
   function buildMenu(tab: Tab) {
     const items: any[] = [
+      {
+        label: tab.pinned ? "unpin" : "pin",
+        action: () => togglePinTab(tab),
+      },
       {
         label: "rename",
         action: () => {
@@ -178,7 +186,7 @@
   {#if $tabs.length === 0}
     <div class="empty">no open sessions</div>
   {:else}
-    {#each $tabs as tab, i (tab.id)}
+    {#each [...$tabs].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) as tab, i (tab.id)}
       {@const st = tabState(tab)}
       <button
         class="tab"
@@ -196,7 +204,7 @@
         on:dblclick={() => { renameValue = tab.title; renaming = tab; }}
         title={tooltip(tab)}
       >
-        <span class="num">{String(i + 1).padStart(2, "0")}</span>
+        <span class="num">{tab.pinned ? "★" : String(i + 1).padStart(2, "0")}</span>
         <span class="state-dot" class:working={st === "working"} class:idle={st === "idle"}></span>
         <span class="icon"><ProviderIcon provider={tab.provider || "claude"} size={12} /></span>
         <span class="title">{tab.title}</span>
@@ -298,6 +306,11 @@
     color: var(--fg-mute);
     font-size: var(--ui-fs-xs);
     width: 16px;
+  }
+
+  .tab :global(.num):has-text("★"),
+  .tab.pinned-tab .num {
+    color: var(--accent-pinned);
   }
 
   .state-dot {
