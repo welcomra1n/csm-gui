@@ -40,8 +40,11 @@
     log = "running package manager…";
     try {
       const out: string = await ApplyUpdate();
-      log = out || "done";
+      log = (out || "done") + "\n\n자동 재시작 중…";
       updated = true;
+      // remember target version so the new instance can show a toast
+      localStorage.setItem("csm-pending-version", latest);
+      setTimeout(() => RestartApp().catch(() => {}), 800);
     } catch (e: any) {
       log = `apply failed: ${e?.message || e}\n\nFallback: manually run\n  brew upgrade --cask csm-gui  (macOS)\n  scoop update csm-gui  (Windows)`;
     } finally {

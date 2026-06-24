@@ -5,8 +5,10 @@
   import Terminal from "./lib/Terminal.svelte";
   import Preview from "./lib/Preview.svelte";
   import Settings from "./lib/Settings.svelte";
+  import { AppVersion } from "../wailsjs/go/main/App.js";
 
   let settingsOpen = false;
+  let updateToast: string | null = null;
   import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth } from "./lib/store";
 
   function handleKey(e: KeyboardEvent) {
@@ -35,8 +37,19 @@
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
     window.addEventListener("keydown", handleKey);
+    // Check if just updated
+    try {
+      const current = await AppVersion();
+      const pending = localStorage.getItem("csm-pending-version");
+      const lastSeen = localStorage.getItem("csm-last-version");
+      if (pending && current === pending && lastSeen !== current) {
+        updateToast = `v${current} 업데이트 완료`;
+        localStorage.removeItem("csm-pending-version");
+      }
+      localStorage.setItem("csm-last-version", current);
+    } catch {}
     return () => window.removeEventListener("keydown", handleKey);
   });
 
@@ -132,6 +145,14 @@
 
 {#if settingsOpen}
   <Settings onClose={() => (settingsOpen = false)} />
+{/if}
+
+{#if updateToast}
+  <div class="toast" on:click={() => (updateToast = null)}>
+    <span class="toast-icon">✓</span>
+    <span>{updateToast}</span>
+    <span class="toast-hint">(클릭해서 닫기)</span>
+  </div>
 {/if}
 
 <style>
@@ -265,5 +286,45 @@
 
   .gear:hover {
     color: var(--fg);
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: var(--bg-elev);
+    border: 1px solid var(--fg);
+    border-radius: 4px;
+    color: var(--fg);
+    font-size: var(--ui-fs);
+    box-shadow: 0 0 12px var(--fg-mute), 0 6px 24px rgba(0, 0, 0, 0.7);
+    cursor: pointer;
+    z-index: 9999;
+    animation: toast-in 0.25s ease-out;
+  }
+
+  .toast:hover {
+    border-color: var(--accent-pinned);
+    box-shadow: 0 0 12px var(--accent-pinned), 0 6px 24px rgba(0, 0, 0, 0.7);
+  }
+
+  .toast-icon {
+    color: var(--fg);
+    font-size: calc(var(--ui-fs) + 2px);
+  }
+
+  .toast-hint {
+    color: var(--fg-mute);
+    font-size: var(--ui-fs-xs);
+  }
+
+  @keyframes toast-in {
+    from { opacity: 0; transform: translate(-50%, 8px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
   }
 </style>
