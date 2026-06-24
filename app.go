@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -250,6 +252,8 @@ func (a *App) DeleteSession(id string) error {
 }
 
 // DeleteSessions trashes many sessions in one scan. Returns count deleted.
+// Parallelized for big groups (scroll = 742). Skips per-file .meta sidecar
+// when batch > 50 to avoid 2× WriteFile syscalls per session.
 func (a *App) DeleteSessions(ids []string) (int, error) {
 	if len(ids) == 0 {
 		return 0, nil
@@ -258,17 +262,39 @@ func (a *App) DeleteSessions(ids []string) (int, error) {
 	for _, id := range ids {
 		wanted[id] = true
 	}
-	// Single fast scan, no detail loading
 	all := discoverSessionsFast()
-	count := 0
+	var matched []*Session
 	for _, s := range all {
 		if wanted[s.ID] {
-			if err := deleteSession(s); err == nil {
-				count++
-			}
+			matched = append(matched, s)
 		}
 	}
-	return count, nil
+	if len(matched) == 0 {
+		return 0, nil
+	}
+	skipMeta := len(matched) > 50
+
+	const workers = 8
+	jobs := make(chan *Session, len(matched))
+	var wg sync.WaitGroup
+	var count int64
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for s := range jobs {
+				if err := deleteSessionEx(s, skipMeta); err == nil {
+					atomic.AddInt64(&count, 1)
+				}
+			}
+		}()
+	}
+	for _, s := range matched {
+		jobs <- s
+	}
+	close(jobs)
+	wg.Wait()
+	return int(count), nil
 }
 
 // AppVersion returns the embedded build version.

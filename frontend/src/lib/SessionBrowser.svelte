@@ -346,12 +346,16 @@
     if (!confirm(`Delete ${all.length} sessions named "${g.head.alias || g.head.projectName}"?`)) return;
     statusText.set(`deleting ${all.length}…`);
     startProgress();
+    const t0 = Date.now();
     try {
       const ids = all.map((s) => s.id);
       const deleted = await DeleteSessions(ids);
       const idSet = new Set(ids);
       tabs.update((arr) => arr.filter((t) => !t.sessionId || !idSet.has(t.sessionId)));
-      statusText.set(`deleted ${deleted}/${all.length}`);
+      // optimistic remove so UI updates before refresh
+      sessions.update((arr) => arr.filter((s) => !idSet.has(s.id)));
+      const dt = ((Date.now() - t0) / 1000).toFixed(1);
+      statusText.set(`deleted ${deleted}/${all.length} in ${dt}s`);
     } catch (e: any) {
       statusText.set(`fail: ${e?.message || e}`);
     } finally {
@@ -367,6 +371,7 @@
       statusText.set(`deleted: ${s.alias || s.projectName}`);
       const tab = $tabs.find((t) => t.sessionId === s.id);
       if (tab) tabs.update((arr) => arr.filter((t) => t.id !== tab.id));
+      sessions.update((arr) => arr.filter((x) => x.id !== s.id));
       await refresh();
     } catch (e: any) {
       statusText.set(`fail: ${e?.message || e}`);

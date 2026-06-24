@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -300,6 +301,10 @@ func trashDir() string {
 }
 
 func deleteSession(s *Session) error {
+	return deleteSessionEx(s, false)
+}
+
+func deleteSessionEx(s *Session, skipMeta bool) error {
 	trash := trashDir()
 	os.MkdirAll(trash, 0755)
 
@@ -316,14 +321,16 @@ func deleteSession(s *Session) error {
 		os.Remove(s.SessionFile)
 	}
 
-	meta := map[string]string{
-		"originalPath": s.SessionFile,
-		"provider":     fmt.Sprintf("%d", s.Provider),
-		"id":           s.ID,
-		"deletedAt":    fmt.Sprintf("%s", s.ModTime.Format("2006-01-02T15:04:05Z07:00")),
+	if !skipMeta {
+		meta := map[string]string{
+			"originalPath": s.SessionFile,
+			"provider":     fmt.Sprintf("%d", s.Provider),
+			"id":           s.ID,
+			"deletedAt":    fmt.Sprintf("%s", s.ModTime.Format("2006-01-02T15:04:05Z07:00")),
+		}
+		metaData, _ := json.Marshal(meta)
+		os.WriteFile(destPath+".meta", metaData, 0644)
 	}
-	metaData, _ := json.Marshal(meta)
-	os.WriteFile(destPath+".meta", metaData, 0644)
 
 	if s.Provider == ProviderCodex {
 		removeFromCodexIndex(s.ID)
@@ -331,7 +338,11 @@ func deleteSession(s *Session) error {
 	return nil
 }
 
+var codexIndexMu sync.Mutex
+
 func removeFromCodexIndex(id string) {
+	codexIndexMu.Lock()
+	defer codexIndexMu.Unlock()
 	home, _ := os.UserHomeDir()
 	indexPath := filepath.Join(home, ".codex", "session_index.jsonl")
 
