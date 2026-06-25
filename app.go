@@ -936,9 +936,16 @@ func (a *App) CopyImageToClipboard(path string) error {
 		}
 		return nil
 	case "windows":
-		// Set-Clipboard -Path expects a file path; reads image into clipboard.
-		script := fmt.Sprintf(`Set-Clipboard -Path '%s'`, strings.ReplaceAll(path, "'", "''"))
-		cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script)
+		// Set-Clipboard -Path copies the file as a file reference (CF_HDROP),
+		// not the image bytes claude expects. Load the image and call
+		// Clipboard.SetImage so the clipboard holds CF_BITMAP / CF_DIB.
+		esc := strings.ReplaceAll(path, "'", "''")
+		script := `Add-Type -AssemblyName System.Windows.Forms; ` +
+			`Add-Type -AssemblyName System.Drawing; ` +
+			`$img = [System.Drawing.Image]::FromFile('` + esc + `'); ` +
+			`[System.Windows.Forms.Clipboard]::SetImage($img); ` +
+			`$img.Dispose()`
+		cmd := exec.Command("powershell", "-NoProfile", "-Sta", "-WindowStyle", "Hidden", "-Command", script)
 		hideConsole(cmd)
 		out, err := cmd.CombinedOutput()
 		if err != nil {

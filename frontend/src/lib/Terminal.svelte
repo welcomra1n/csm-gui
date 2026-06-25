@@ -4,7 +4,7 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { WebLinksAddon } from "@xterm/addon-web-links";
   import "@xterm/xterm/css/xterm.css";
-  import { EventsOn, EventsOff, OnFileDrop, OnFileDropOff, WindowShow } from "../../wailsjs/runtime/runtime.js";
+  import { EventsOn, EventsOff, OnFileDrop, WindowShow } from "../../wailsjs/runtime/runtime.js";
   import { WritePty, ResizePty, SaveClipboardImage, CopyImageToClipboard } from "../../wailsjs/go/main/App.js";
   import { fontSize, activeTabId, tabs, leftWidth, rightWidth } from "./store";
 
@@ -15,6 +15,10 @@
       doResize();
       setTimeout(doResize, 50);
     });
+    // Re-register Wails OnFileDrop so this active tab owns the callback.
+    if (wailsDropCallback) {
+      try { OnFileDrop(wailsDropCallback, true); } catch {}
+    }
   }
 
   // Re-fit on splitter drag (when this tab is active)
@@ -30,6 +34,7 @@
   let outputUnsubscribe: (() => void) | null = null;
   let exitUnsubscribe: (() => void) | null = null;
   let dropCleanups: (() => void)[] = [];
+  let wailsDropCallback: ((x: number, y: number, paths: string[]) => void) | null = null;
 
   let resizeTimer: ReturnType<typeof setTimeout> | null = null;
   let lastCols = 0;
@@ -155,14 +160,16 @@
     term.focus();
 
     // IME composition handling.
-    // Korean/Japanese composition fires both compositionend AND a delayed
-    // textarea input that xterm forwards through onData. Without a wide
-    // enough suppress window the composed chars are written twice. We also
-    // remember the last composed string so any matching onData burst within
-    // the window is silently dropped even if longer than the timer.
+    // Korean/Japanese composition fires compositionend AND a delayed
+    // textarea input echo that xterm forwards via onData. We dedupe by
+    // remembering the last composed string (for 350ms) and silently
+    // dropping any onData burst that exactly matches it. We do NOT use a
+    // time-based blanket suppress, because the keystroke that committed
+    // the composition (typically space) arrives within that same window
+    // and must reach the PTY — otherwise the user has to press space
+    // twice to get a single space after Korean input.
     let composing = false;
     let composeBuffer = "";
-    let suppressUntil = 0;
     let lastComposed = "";
 
     const helper = containerEl.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
@@ -178,11 +185,8 @@
         composing = false;
         const out = e.data || composeBuffer;
         composeBuffer = "";
-        // Clear helper FIRST so the post-composition input event xterm
-        // listens for gets an empty value and emits nothing.
         try { helper.value = ""; } catch {}
         lastComposed = out;
-        suppressUntil = Date.now() + 250;
         if (out) {
           WritePty(tabId, out).catch((err) => console.warn("write pty:", err));
         }
@@ -192,8 +196,9 @@
 
     term.onData((data) => {
       if (composing) return;
-      if (Date.now() < suppressUntil) return;
-      // Late-arriving echo of the composed string after the timer expired.
+      // Late-arriving echo of the composed string — drop ONLY if it
+      // matches exactly. Other bytes (the commit space, the next char)
+      // pass through unchanged.
       if (lastComposed && data === lastComposed) {
         lastComposed = "";
         return;
@@ -251,10 +256,13 @@
       }
     }
 
-    OnFileDrop(async (_x, _y, paths) => {
+    // Wails OnFileDrop holds a single callback — last registration wins.
+    // Register here and ALSO re-register whenever this tab becomes active
+    // (see reactive block below). Active-tab guard inside the callback
+    // is belt-and-suspenders.
+    wailsDropCallback = async (_x: number, _y: number, paths: string[]) => {
       if ($activeTabId !== tabId) return;
       if (!paths || !paths.length) return;
-      // Give the HTML5 handler a tick to claim its files first.
       await new Promise((r) => setTimeout(r, 80));
       const mod = await import("../../wailsjs/go/main/App.js");
       const processed: string[] = [];
@@ -268,7 +276,8 @@
         }
       }
       deliverDropped(processed);
-    }, false);
+    };
+    OnFileDrop(wailsDropCallback, true);
 
     // Attach to document so the listener catches drops anywhere in the
     // window — xterm's helper textarea sometimes intercepts events before
@@ -450,7 +459,8 @@
     if (exitUnsubscribe) exitUnsubscribe();
     if (resizeObserver) resizeObserver.disconnect();
     window.removeEventListener("resize", doResize);
-    try { OnFileDropOff(); } catch {}
+    // Do NOT call OnFileDropOff — it clears the global handler, which
+    // would deregister other live Terminal instances' callbacks.
     for (const fn of dropCleanups) try { fn(); } catch {}
     dropCleanups = [];
     if (term) term.dispose();
@@ -466,6 +476,7 @@
     padding: 6px;
     background: #000;
     overflow: hidden;
+    --wails-drop-target: drop;
   }
 
   :global(.xterm) {
