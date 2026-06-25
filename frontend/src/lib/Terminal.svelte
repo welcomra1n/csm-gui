@@ -348,8 +348,16 @@
       }
     });
 
-    let trustAnswered = false;
+    // Skip trust auto-answer entirely for resumed sessions — the trust
+    // dialog only appears on the first claude run in a folder, so a tab
+    // with an existing sessionId never needs the auto answer, and replayed
+    // history can contain the prompt text verbatim which would falsely
+    // trigger it.
+    const initialTab = $tabs.find((t) => t.id === tabId);
+    const skipTrust = !!(initialTab && initialTab.sessionId);
+    let trustAnswered = skipTrust;
     const trustWindowStart = Date.now();
+    let trustBuffer = "";
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
     let everWasWorking = false;
     function scheduleIdleNotif() {
@@ -404,19 +412,24 @@
         }),
       );
       scheduleIdleNotif();
-      // Auto-answer claude / codex trust prompt. Match the option line
-      // that both old ("1. Yes, proceed") and new ("1. Yes, I trust this
-      // folder") prompts share. Bounded to the first 8s of the session
-      // so unrelated later output containing "1. Yes" does not retrigger.
-      if (
-        !trustAnswered &&
-        Date.now() - trustWindowStart < 8000 &&
-        /1\.\s*Yes,?\s*(I trust this folder|proceed)/i.test(data)
-      ) {
-        trustAnswered = true;
-        setTimeout(() => {
-          WritePty(tabId, "1\r").catch(() => {});
-        }, 150);
+      // Auto-answer claude / codex trust prompt.
+      // Resume replay of session history can include arbitrary text
+      // (including past assistant messages that quoted the prompt verbatim),
+      // so the option-line alone is not enough. We require BOTH the
+      // prompt header AND the option line to appear in a small rolling
+      // buffer of the most recent 4KB of output. Bounded to the first 5s
+      // of the session.
+      if (!trustAnswered && Date.now() - trustWindowStart < 5000) {
+        trustBuffer = (trustBuffer + data).slice(-4096);
+        const hasHeader = /Quick safety check|Do you trust the files in this folder\?/i.test(trustBuffer);
+        const hasOption = /1\.\s*Yes,?\s*(I trust this folder|proceed)/i.test(trustBuffer);
+        if (hasHeader && hasOption) {
+          trustAnswered = true;
+          trustBuffer = "";
+          setTimeout(() => {
+            WritePty(tabId, "1\r").catch(() => {});
+          }, 150);
+        }
       }
     });
     outputUnsubscribe = () => EventsOff(outputEvent);
