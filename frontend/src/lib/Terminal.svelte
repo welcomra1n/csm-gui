@@ -154,12 +154,15 @@
     term.focus();
 
     // IME composition handling.
-    // Strategy: while composing, swallow onData. On compositionend, write the
-    // composed text and suppress onData for a short window so xterm's
-    // own keydown→data path doesn't re-emit the same chars.
+    // Korean/Japanese composition fires both compositionend AND a delayed
+    // textarea input that xterm forwards through onData. Without a wide
+    // enough suppress window the composed chars are written twice. We also
+    // remember the last composed string so any matching onData burst within
+    // the window is silently dropped even if longer than the timer.
     let composing = false;
     let composeBuffer = "";
     let suppressUntil = 0;
+    let lastComposed = "";
 
     const helper = containerEl.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
     if (helper) {
@@ -172,22 +175,28 @@
       });
       helper.addEventListener("compositionend", (e: CompositionEvent) => {
         composing = false;
-        suppressUntil = Date.now() + 80;
         const out = e.data || composeBuffer;
         composeBuffer = "";
+        // Clear helper FIRST so the post-composition input event xterm
+        // listens for gets an empty value and emits nothing.
+        try { helper.value = ""; } catch {}
+        lastComposed = out;
+        suppressUntil = Date.now() + 250;
         if (out) {
           WritePty(tabId, out).catch((err) => console.warn("write pty:", err));
         }
-        // Clear helper textarea so xterm doesn't echo composed text
-        try {
-          helper.value = "";
-        } catch {}
+        setTimeout(() => { if (lastComposed === out) lastComposed = ""; }, 350);
       });
     }
 
     term.onData((data) => {
       if (composing) return;
       if (Date.now() < suppressUntil) return;
+      // Late-arriving echo of the composed string after the timer expired.
+      if (lastComposed && data === lastComposed) {
+        lastComposed = "";
+        return;
+      }
       WritePty(tabId, data).catch((e) => console.warn("write pty:", e));
     });
 
@@ -213,7 +222,7 @@
         .map((p) => (p.includes(" ") ? `"${p}"` : p))
         .join(" ");
       WritePty(tabId, quoted + " ").catch(() => {});
-    }, true);
+    }, false);
 
     // Clipboard paste: if image present, save to temp then paste path
     containerEl.addEventListener("paste", async (e: ClipboardEvent) => {
