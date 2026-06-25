@@ -111,6 +111,8 @@
 
   .info {
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .label {
@@ -134,6 +136,8 @@
     margin-top: 2px;
     line-height: 1.5;
     white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .badge {

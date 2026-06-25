@@ -314,6 +314,62 @@ func (a *App) RenameAlias(id string, alias string) error {
 }
 
 // DeleteSession moves a session's JSONL file to the trash directory.
+// ForkSession duplicates a session's JSONL with a fresh UUID so the user
+// can branch from the same conversation context without overwriting the
+// original. Returns the new session ID. claude reads sessionId from each
+// JSONL line, so every occurrence is rewritten to the new ID. Metadata
+// (folder, tags, alias) is copied with a "(fork)" suffix on the alias.
+func (a *App) ForkSession(id string) (string, error) {
+	src := a.GetSession(id)
+	if src == nil {
+		return "", fmt.Errorf("session not found: %s", id)
+	}
+	if src.SessionFile == "" {
+		return "", fmt.Errorf("session has no backing file")
+	}
+	data, err := os.ReadFile(src.SessionFile)
+	if err != nil {
+		return "", fmt.Errorf("read source: %w", err)
+	}
+	newID := generateUUID()
+	// Rewrite every occurrence of the old session id.
+	rewritten := strings.ReplaceAll(string(data), id, newID)
+
+	destPath := filepath.Join(filepath.Dir(src.SessionFile), newID+".jsonl")
+	if err := os.WriteFile(destPath, []byte(rewritten), 0644); err != nil {
+		return "", fmt.Errorf("write fork: %w", err)
+	}
+
+	// Copy metadata (folder, tags, alias suffix).
+	meta := loadMetadata()
+	if meta.SessionFolders == nil {
+		meta.SessionFolders = map[string]string{}
+	}
+	if meta.SessionTags == nil {
+		meta.SessionTags = map[string][]string{}
+	}
+	if folder, ok := meta.SessionFolders[id]; ok {
+		meta.SessionFolders[newID] = folder
+	}
+	if tags, ok := meta.SessionTags[id]; ok {
+		cp := make([]string, len(tags))
+		copy(cp, tags)
+		meta.SessionTags[newID] = cp
+	}
+	saveMetadata(meta)
+
+	// Alias with (fork) suffix
+	aliases := loadAliases()
+	baseAlias := src.Alias
+	if baseAlias == "" {
+		baseAlias = src.ProjectName
+	}
+	aliases[newID] = baseAlias + " (fork)"
+	saveAliases(aliases)
+
+	return newID, nil
+}
+
 func (a *App) DeleteSession(id string) error {
 	s := a.GetSession(id)
 	if s == nil {

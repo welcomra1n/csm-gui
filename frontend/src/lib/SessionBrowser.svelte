@@ -9,6 +9,7 @@
     RenameAlias,
     SetSessionTag,
     SetSessionTagsBulk,
+    ForkSession,
     DeleteSession,
     DeleteSessions,
     SetSessionFolder,
@@ -425,6 +426,7 @@
       { label: "rename alias", action: () => (modal = { kind: "rename", session: s, value: s.alias || "" }), key: "F2" },
       { label: s.pinned ? "unpin" : "pin", action: () => togglePin(s), key: "P" },
       { label: "edit tags", action: () => (tagModal = { sessions: [s], initial: s.tags || [] }), key: "T" },
+      { label: "fork (clone session)", action: () => forkSession(s) },
       { label: "delete", action: () => deleteSession(s), danger: true, key: "Del" },
     ];
     if (groupSize > 1) {
@@ -471,6 +473,22 @@
       await refresh();
     } catch (e: any) {
       statusText.set(`fail: ${e?.message || e}`);
+    } finally {
+      endProgress();
+    }
+  }
+
+  async function forkSession(s: Session) {
+    startProgress();
+    try {
+      const newId = await ForkSession(s.id);
+      statusText.set(`forked: ${s.alias || s.projectName} → ${newId.slice(0, 8)}`);
+      await refresh();
+      // Auto-open the fork in a new tab
+      const forked = ($sessions || []).find((x) => x.id === newId);
+      if (forked) openSession(forked);
+    } catch (e: any) {
+      statusText.set(`fork failed: ${e?.message || e}`);
     } finally {
       endProgress();
     }
