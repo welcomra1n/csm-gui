@@ -1297,6 +1297,12 @@
     flex-direction: column;
   }
 
+  /* Visual count helper: gap after every 5th session block so it's
+     easier to count at a glance. */
+  .session-block:nth-of-type(5n+5) {
+    margin-bottom: 6px;
+  }
+
   .agent {
     display: flex;
     align-items: center;

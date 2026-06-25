@@ -90,6 +90,9 @@ const savedLeftOpen = localStorage.getItem("csm-left-open");
 export const leftOpen = writable<boolean>(savedLeftOpen === null ? true : savedLeftOpen === "1");
 leftOpen.subscribe((v) => localStorage.setItem("csm-left-open", v ? "1" : "0"));
 
+// Alt-held indicator (for showing tab hotkey badges 1..9)
+export const altHeld = writable<boolean>(false);
+
 export const progressActive = writable<number>(0); // counter; >0 = busy
 export function startProgress() { progressActive.update((n) => n + 1); }
 export function endProgress() { progressActive.update((n) => Math.max(0, n - 1)); }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tabs, activeTabId } from "./store";
+  import { tabs, activeTabId, altHeld } from "./store";
   import { KillPty, RenameAlias, GenerateRecap, DeleteSession } from "../../wailsjs/go/main/App.js";
   import ProviderIcon from "./ProviderIcon.svelte";
   import ContextMenu from "./ContextMenu.svelte";
@@ -220,6 +220,9 @@
         title={tooltip(tab)}
       >
         <span class="num">{tab.pinned ? "★" : String(i + 1).padStart(2, "0")}</span>
+        {#if $altHeld && i < 9}
+          <span class="hotkey">{i + 1}</span>
+        {/if}
         <span class="state-dot" class:working={st === "working"} class:idle={st === "idle"}>{st === "working" ? spinnerFrame : ""}</span>
         <span class="icon"><ProviderIcon provider={tab.provider || "claude"} size={12} /></span>
         <span class="title">{tab.title}</span>
@@ -327,6 +330,12 @@
     font-size: var(--ui-fs);
   }
 
+  /* Visual count helper: extra gap after every 5th tab so it's easier
+     to count at a glance. */
+  .tab:nth-of-type(5n+5) {
+    margin-bottom: 6px;
+  }
+
   .tab:hover {
     background: var(--bg-hover);
     color: var(--fg);
@@ -360,6 +369,22 @@
     color: var(--accent-pinned);
     font-size: var(--ui-fs);
     text-shadow: 0 0 4px var(--accent-pinned);
+  }
+
+  .hotkey {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border: 1px solid var(--accent-pinned);
+    border-radius: 2px;
+    color: var(--accent-pinned);
+    font-size: 9px;
+    line-height: 1;
+    background: rgba(255, 214, 10, 0.08);
+    text-shadow: 0 0 3px var(--accent-pinned);
   }
 
   .state-dot {

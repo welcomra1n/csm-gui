@@ -11,7 +11,7 @@
   let settingsOpen = false;
   let permsOpen = false;
   let updateToast: string | null = null;
-  import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth, progressActive, previewOpen, rightOpen, leftOpen } from "./lib/store";
+  import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth, progressActive, previewOpen, rightOpen, leftOpen, altHeld } from "./lib/store";
 
   function handleKey(e: KeyboardEvent) {
     const mod = e.metaKey || e.ctrlKey;
@@ -36,11 +36,29 @@
     } else if (mod && e.key === ",") {
       e.preventDefault();
       settingsOpen = true;
+    } else if (e.altKey && !e.metaKey && !e.ctrlKey && /^[1-9]$/.test(e.key)) {
+      // Alt+1..9 → jump to that tab in the visible sidebar order
+      // (pinned first, then mount order — matches TabSidebar sort).
+      const idx = parseInt(e.key, 10) - 1;
+      const sorted = [...$tabs].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+      if (sorted[idx]) {
+        e.preventDefault();
+        activeTabId.set(sorted[idx].id);
+      }
     }
   }
 
+  function trackAlt(e: KeyboardEvent) {
+    if (e.type === "keydown" && e.altKey) altHeld.set(true);
+    else if (e.type === "keyup" && e.key === "Alt") altHeld.set(false);
+  }
+  function blurClearAlt() { altHeld.set(false); }
+
   onMount(async () => {
     window.addEventListener("keydown", handleKey);
+    window.addEventListener("keydown", trackAlt);
+    window.addEventListener("keyup", trackAlt);
+    window.addEventListener("blur", blurClearAlt);
     // Check if just updated
     try {
       const current = await AppVersion();

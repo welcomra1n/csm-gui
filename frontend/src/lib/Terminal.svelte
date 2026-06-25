@@ -172,6 +172,24 @@
     let composeBuffer = "";
     let lastComposed = "";
 
+    // Batched PTY write — see term.onData below for rationale.
+    let writeBuf = "";
+    let writeScheduled = false;
+    function flushWrite() {
+      writeScheduled = false;
+      if (!writeBuf) return;
+      const out = writeBuf;
+      writeBuf = "";
+      WritePty(tabId, out).catch((e) => console.warn("write pty:", e));
+    }
+    function enqueueWrite(s: string) {
+      writeBuf += s;
+      if (!writeScheduled) {
+        writeScheduled = true;
+        requestAnimationFrame(flushWrite);
+      }
+    }
+
     const helper = containerEl.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
     if (helper) {
       helper.addEventListener("compositionstart", () => {
@@ -187,23 +205,22 @@
         composeBuffer = "";
         try { helper.value = ""; } catch {}
         lastComposed = out;
-        if (out) {
-          WritePty(tabId, out).catch((err) => console.warn("write pty:", err));
-        }
+        if (out) enqueueWrite(out);
         setTimeout(() => { if (lastComposed === out) lastComposed = ""; }, 350);
       });
     }
 
+    // Coalesce keystrokes that land in the same animation frame into a
+    // single WritePty call. Each Wails RPC carries ~5–15ms IPC overhead
+    // on Windows WebView2; batching collapses fast-typing / paste /
+    // autocomplete bursts into one round-trip without visible latency.
     term.onData((data) => {
       if (composing) return;
-      // Late-arriving echo of the composed string — drop ONLY if it
-      // matches exactly. Other bytes (the commit space, the next char)
-      // pass through unchanged.
       if (lastComposed && data === lastComposed) {
         lastComposed = "";
         return;
       }
-      WritePty(tabId, data).catch((e) => console.warn("write pty:", e));
+      enqueueWrite(data);
     });
 
     containerEl.addEventListener("click", () => term.focus());
