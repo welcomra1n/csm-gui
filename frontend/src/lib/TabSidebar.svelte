@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tabs, activeTabId, leftOpen } from "./store";
+  import { tabs, activeTabId } from "./store";
   import { KillPty, RenameAlias, GenerateRecap, DeleteSession } from "../../wailsjs/go/main/App.js";
   import ProviderIcon from "./ProviderIcon.svelte";
   import ContextMenu from "./ContextMenu.svelte";
@@ -187,7 +187,6 @@
         {@const unpinnedCount = $tabs.filter((t) => !t.pinned).length}
         <button class="close-all" on:click={closeAll} title={`close ${unpinnedCount} unpinned tabs (pinned kept)`} disabled={unpinnedCount === 0}>✕ {unpinnedCount}</button>
       {/if}
-      <button class="hide-side" on:click={() => leftOpen.set(false)} title="hide tab sidebar">◀</button>
     </div>
   </div>
   {#if $tabs.length === 0}

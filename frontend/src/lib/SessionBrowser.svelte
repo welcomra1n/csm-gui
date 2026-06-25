@@ -620,7 +620,7 @@
       on:click={() => (folderModal = { kind: "create", value: "" })}
       title="new folder"
     >
-      📁+
+      📁
     </button>
     {#if newMenuOpen}
       <div class="new-menu">

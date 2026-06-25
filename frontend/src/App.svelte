@@ -93,6 +93,12 @@
     }
   }
 
+  function maybeStartDrag(side: "left" | "right", e: MouseEvent) {
+    const t = e.target as HTMLElement | null;
+    if (t && t.closest(".split-arrow")) return;
+    startDrag(side);
+  }
+
   onMount(() => {
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
@@ -103,16 +109,23 @@
   });
 </script>
 
-<div class="app" style="grid-template-columns: {$leftOpen ? $leftWidth + 'px' : '24px'} 4px 1fr 4px {$rightOpen ? $rightWidth + 'px' : '24px'};">
+<div class="app" style="grid-template-columns: {$leftOpen ? $leftWidth + 'px' : '0px'} 6px 1fr 6px {$rightOpen ? $rightWidth + 'px' : '0px'};">
   <aside class="left" class:collapsed={!$leftOpen}>
-    {#if $leftOpen}
-      <TabSidebar />
-    {:else}
-      <button class="expand-strip" on:click={() => leftOpen.set(true)} title="show tab sidebar">▶</button>
-    {/if}
+    {#if $leftOpen}<TabSidebar />{/if}
   </aside>
 
-  <div class="splitter left-split" on:mousedown={() => startDrag("left")}></div>
+  <div
+    class="splitter left-split"
+    class:collapsed={!$leftOpen}
+    on:mousedown={(e) => maybeStartDrag("left", e)}
+  >
+    <button
+      class="split-arrow"
+      on:mousedown|stopPropagation
+      on:click={() => leftOpen.update((v) => !v)}
+      title={$leftOpen ? "hide tab sidebar" : "show tab sidebar"}
+    >{$leftOpen ? "◀" : "▶"}</button>
+  </div>
 
   <main class="center">
     {#each $tabs as tab (tab.id)}
@@ -133,14 +146,21 @@
     {/if}
   </main>
 
-  <div class="splitter right-split" on:mousedown={() => startDrag("right")}></div>
+  <div
+    class="splitter right-split"
+    class:collapsed={!$rightOpen}
+    on:mousedown={(e) => maybeStartDrag("right", e)}
+  >
+    <button
+      class="split-arrow"
+      on:mousedown|stopPropagation
+      on:click={() => rightOpen.update((v) => !v)}
+      title={$rightOpen ? "hide session sidebar" : "show session sidebar"}
+    >{$rightOpen ? "▶" : "◀"}</button>
+  </div>
 
   <aside class="right" class:collapsed={!$rightOpen}>
     {#if $rightOpen}
-      <div class="right-header">
-        <span>SESSIONS</span>
-        <button class="collapse-btn" on:click={() => rightOpen.set(false)} title="hide session sidebar">▶</button>
-      </div>
       <div class="right-top" class:full={!$previewOpen}>
         <SessionBrowser />
       </div>
@@ -159,8 +179,6 @@
           ▲ show preview
         </button>
       {/if}
-    {:else}
-      <button class="expand-strip" on:click={() => rightOpen.set(true)} title="show session sidebar">◀</button>
     {/if}
   </aside>
 
@@ -214,11 +232,43 @@
   .splitter {
     background: var(--border-strong);
     cursor: col-resize;
+    position: relative;
   }
 
   .splitter:hover, .splitter:active {
     background: var(--fg);
     box-shadow: 0 0 4px var(--fg-mute);
+  }
+
+  .splitter.collapsed {
+    cursor: pointer;
+  }
+
+  .split-arrow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 14px;
+    height: 28px;
+    padding: 0;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
+    color: var(--fg-mute);
+    cursor: pointer;
+    font-size: 9px;
+    line-height: 1;
+    border-radius: 2px;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .split-arrow:hover {
+    background: var(--bg);
+    color: var(--fg);
+    border-color: var(--fg);
   }
 
   .left-split { grid-area: lsplit; }
