@@ -109,7 +109,7 @@
   });
 </script>
 
-<div class="app" style="grid-template-columns: {$leftOpen ? $leftWidth + 'px' : '0px'} 6px 1fr 6px {$rightOpen ? $rightWidth + 'px' : '0px'};">
+<div class="app" style="grid-template-columns: {$leftOpen ? $leftWidth + 'px' : '0px'} 3px 1fr 3px {$rightOpen ? $rightWidth + 'px' : '0px'};">
   <aside class="left" class:collapsed={!$leftOpen}>
     {#if $leftOpen}<TabSidebar />{/if}
   </aside>

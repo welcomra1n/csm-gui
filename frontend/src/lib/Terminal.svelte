@@ -224,6 +224,64 @@
       WritePty(tabId, quoted + " ").catch(() => {});
     }, false);
 
+    // Fallback HTML5 drop listener — Wails OnFileDrop sometimes does not
+    // fire on macOS WKWebView when files are dragged from Finder onto the
+    // terminal area. This handler reads the drop directly from the
+    // browser's DataTransfer and routes image blobs through
+    // SaveClipboardImage so they still end up as a real filesystem path
+    // pasted into the PTY.
+    containerEl.addEventListener("dragover", (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    });
+    containerEl.addEventListener("drop", async (e: DragEvent) => {
+      if ($activeTabId !== tabId) return;
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const paths: string[] = [];
+      for (const f of Array.from(files)) {
+        // Wails / WebView2 / WKWebView expose the absolute file path on
+        // dropped files as a non-standard `path` property on File. Use it
+        // when available so non-image files (folders, source files) keep
+        // their real paths.
+        const realPath = (f as any).path as string | undefined;
+        if (realPath) {
+          try {
+            const mod = await import("../../wailsjs/go/main/App.js");
+            const out = await mod.ProcessDroppedPath(realPath);
+            paths.push(out || realPath);
+          } catch {
+            paths.push(realPath);
+          }
+          continue;
+        }
+        // No filesystem path available (sandboxed browser drop). Read the
+        // blob and save through the same code path the clipboard paste
+        // already uses.
+        if (f.type.startsWith("image/")) {
+          try {
+            const dataUrl: string = await new Promise((resolve, reject) => {
+              const r = new FileReader();
+              r.onload = () => resolve(r.result as string);
+              r.onerror = () => reject(r.error);
+              r.readAsDataURL(f);
+            });
+            const path: string = await SaveClipboardImage(dataUrl);
+            paths.push(path);
+          } catch (err) {
+            console.warn("drop image:", err);
+          }
+        }
+      }
+      if (paths.length === 0) return;
+      const quoted = paths
+        .map((p) => (p.includes(" ") ? `"${p}"` : p))
+        .join(" ");
+      WritePty(tabId, quoted + " ").catch(() => {});
+    });
+
     // Clipboard paste: if image present, save to temp then paste path
     containerEl.addEventListener("paste", async (e: ClipboardEvent) => {
       if ($activeTabId !== tabId) return;
@@ -251,6 +309,7 @@
     });
 
     let trustAnswered = false;
+    const trustWindowStart = Date.now();
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
     let everWasWorking = false;
     function scheduleIdleNotif() {
@@ -305,7 +364,15 @@
         }),
       );
       scheduleIdleNotif();
-      if (!trustAnswered && /trust.*folder|yes,?\s*proceed|do you trust/i.test(data)) {
+      // Auto-answer claude / codex trust prompt. Match the option line
+      // that both old ("1. Yes, proceed") and new ("1. Yes, I trust this
+      // folder") prompts share. Bounded to the first 8s of the session
+      // so unrelated later output containing "1. Yes" does not retrigger.
+      if (
+        !trustAnswered &&
+        Date.now() - trustWindowStart < 8000 &&
+        /1\.\s*Yes,?\s*(I trust this folder|proceed)/i.test(data)
+      ) {
         trustAnswered = true;
         setTimeout(() => {
           WritePty(tabId, "1\r").catch(() => {});

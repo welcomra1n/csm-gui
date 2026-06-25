@@ -61,6 +61,12 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	env := wruntime.Environment(ctx)
+	if env.BuildType == "dev" {
+		wruntime.WindowSetTitle(ctx, "csm-dev")
+	} else {
+		wruntime.WindowSetTitle(ctx, "csm")
+	}
 }
 
 // ListSessions returns all discovered sessions with metadata applied.
