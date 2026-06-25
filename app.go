@@ -595,6 +595,55 @@ func (a *App) SetPermission(key string, enabled bool) error {
 
 // SaveClipboardImage writes a base64 PNG to a temp file and returns the path.
 // Frontend pastes clipboard image -> reads as data URL -> sends base64 here.
+// CopyImageToClipboard writes the image at path into the OS clipboard so
+// claude / codex can later read it via their own paste-detection logic.
+// macOS uses osascript (PNGf / JPEG / TIFF); Windows uses PowerShell.
+func (a *App) CopyImageToClipboard(path string) error {
+	if path == "" {
+		return fmt.Errorf("empty path")
+	}
+	if _, err := os.Stat(path); err != nil {
+		return err
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	switch runtime.GOOS {
+	case "darwin":
+		var oscType string
+		switch ext {
+		case ".png":
+			oscType = "«class PNGf»"
+		case ".jpg", ".jpeg":
+			oscType = "JPEG picture"
+		case ".gif":
+			oscType = "GIF picture"
+		case ".tiff", ".tif":
+			oscType = "TIFF picture"
+		default:
+			// fall back to PNG read; works for most common image formats
+			oscType = "«class PNGf»"
+		}
+		script := fmt.Sprintf(`set the clipboard to (read (POSIX file %q) as %s)`, path, oscType)
+		cmd := exec.Command("osascript", "-e", script)
+		hideConsole(cmd)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("osascript: %w: %s", err, string(out))
+		}
+		return nil
+	case "windows":
+		// Set-Clipboard -Path expects a file path; reads image into clipboard.
+		script := fmt.Sprintf(`Set-Clipboard -Path '%s'`, strings.ReplaceAll(path, "'", "''"))
+		cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script)
+		hideConsole(cmd)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("powershell: %w: %s", err, string(out))
+		}
+		return nil
+	}
+	return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+}
+
 func (a *App) SaveClipboardImage(base64Data string) (string, error) {
 	// strip data URL prefix if present
 	if idx := strings.Index(base64Data, ","); idx > 0 {

@@ -15,6 +15,13 @@
   export let dense: boolean = false; // settings inline view
 
   let perms: Permission[] = [];
+  let expanded = new Set<string>();
+
+  function toggleExpand(key: string) {
+    if (expanded.has(key)) expanded.delete(key);
+    else expanded.add(key);
+    expanded = new Set(expanded);
+  }
 
   async function load() {
     perms = (await ListPermissions()) || [];
@@ -37,27 +44,31 @@
 <div class="perms" class:dense>
   {#each perms as p (p.key)}
     <div class="perm" class:os={p.category === "os"} class:req={p.required}>
-      <label class="row">
+      <div class="row" on:click={() => toggleExpand(p.key)}>
         <input
           type="checkbox"
           checked={p.enabled}
           disabled={p.required}
+          on:click|stopPropagation
           on:change={() => toggle(p)}
         />
         <div class="info">
           <div class="label">
+            <span class="chev">{expanded.has(p.key) ? "▾" : "▸"}</span>
             {p.label}
             {#if p.required}<span class="badge req-badge">필수</span>{/if}
             {#if p.category === "os"}<span class="badge os-badge">OS</span>{/if}
           </div>
-          <div class="desc">{p.description}</div>
+          {#if expanded.has(p.key)}
+            <div class="desc">{p.description}</div>
+          {/if}
         </div>
         {#if p.systemUrl}
           <button class="ext" on:click|stopPropagation|preventDefault={() => open(p.systemUrl)} title="open system settings">
             ↗
           </button>
         {/if}
-      </label>
+      </div>
     </div>
   {/each}
 </div>
@@ -108,6 +119,13 @@
     display: flex;
     align-items: center;
     gap: 6px;
+  }
+
+  .chev {
+    color: var(--fg-mute);
+    font-size: var(--ui-fs-xs);
+    width: 10px;
+    display: inline-block;
   }
 
   .desc {

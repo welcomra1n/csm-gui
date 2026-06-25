@@ -5,7 +5,7 @@
   import { WebLinksAddon } from "@xterm/addon-web-links";
   import "@xterm/xterm/css/xterm.css";
   import { EventsOn, EventsOff, OnFileDrop, OnFileDropOff, WindowShow } from "../../wailsjs/runtime/runtime.js";
-  import { WritePty, ResizePty, SaveClipboardImage } from "../../wailsjs/go/main/App.js";
+  import { WritePty, ResizePty, SaveClipboardImage, CopyImageToClipboard } from "../../wailsjs/go/main/App.js";
   import { fontSize, activeTabId, tabs, leftWidth, rightWidth } from "./store";
 
   export let tabId: string;
@@ -219,12 +219,36 @@
       const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
       return i >= 0 ? p.slice(i + 1) : p;
     }
+    const IMG_EXT_RE = /\.(png|jpg|jpeg|gif|webp|bmp|tiff|tif|heic|heif)$/i;
+    function isImagePath(p: string) {
+      return IMG_EXT_RE.test(p);
+    }
     function writePaths(arr: string[]) {
       if (arr.length === 0) return;
       const quoted = arr
         .map((p) => (p.includes(" ") ? `"${p}"` : p))
         .join(" ");
       WritePty(tabId, quoted + " ").catch(() => {});
+    }
+    // Image drop path: copy file into OS clipboard then send Ctrl+V so
+    // claude / codex use their built-in paste detection and render the
+    // attachment as [Image #N] instead of a bare file path.
+    async function deliverDropped(arr: string[]) {
+      if (arr.length === 0) return;
+      const images = arr.filter(isImagePath);
+      const others = arr.filter((p) => !isImagePath(p));
+      if (others.length > 0) writePaths(others);
+      for (const imgPath of images) {
+        try {
+          await CopyImageToClipboard(imgPath);
+          await WritePty(tabId, "\x16");
+          // small spacing between multiple image pastes
+          if (images.length > 1) await new Promise((r) => setTimeout(r, 150));
+        } catch (err) {
+          console.warn("clipboard paste failed, falling back to path:", err);
+          writePaths([imgPath]);
+        }
+      }
     }
 
     OnFileDrop(async (_x, _y, paths) => {
@@ -243,7 +267,7 @@
           processed.push(p);
         }
       }
-      writePaths(processed);
+      deliverDropped(processed);
     }, false);
 
     // Attach to document so the listener catches drops anywhere in the
@@ -287,7 +311,7 @@
           }
         }
       }
-      writePaths(collected);
+      deliverDropped(collected);
     };
     // document-level only; containerEl listener would bubble to document
     // and fire the handler twice for the same drop.
