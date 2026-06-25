@@ -616,7 +616,13 @@ func (a *App) GenerateRecap(id string, force bool) (string, error) {
 
 	prompt := "한국어로 정확히 세 줄로 이 세션을 요약해줘. 각 줄은 한 문장씩. 형식:\n1. [주제]\n2. [한 일/논의한 것]\n3. [결론/다음 단계]\n\n세션:\n" + ctx.String()
 
-	recapCmd := exec.Command(cmd, "-p", prompt, "--dangerously-skip-permissions")
+	finalCmd := cmd
+	finalArgs := []string{"-p", prompt, "--dangerously-skip-permissions"}
+	if nodeExe, jsPath, ok := resolveNpmShim(cmd); ok {
+		finalCmd = nodeExe
+		finalArgs = append([]string{jsPath}, finalArgs...)
+	}
+	recapCmd := exec.Command(finalCmd, finalArgs...)
 	hideConsole(recapCmd)
 	out, err := recapCmd.Output()
 	if err != nil {

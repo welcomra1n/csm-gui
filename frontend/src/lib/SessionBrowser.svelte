@@ -864,7 +864,10 @@
     border-radius: 2px;
     padding: 5px 8px;
     color: var(--fg);
-    font-size: var(--ui-fs);
+    font-size: var(--ui-fs-xs);
+    letter-spacing: 1px;
+    box-sizing: border-box;
+    min-width: 0;
   }
 
   .searchbox input:focus {
@@ -879,6 +882,8 @@
     color: var(--fg-dim);
     font-size: var(--ui-fs-xs);
     min-width: 32px;
+    width: 32px;
+    box-sizing: border-box;
   }
 
   .refresh:hover {
@@ -911,6 +916,8 @@
     color: var(--accent-folder);
     font-size: var(--ui-fs-xs);
     min-width: 32px;
+    width: 32px;
+    box-sizing: border-box;
   }
 
   .folder-btn:hover {

@@ -105,12 +105,32 @@
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon());
 
-    // Ensure Tab + arrow keys always go to PTY, never to browser focus traversal
+    // Ensure Tab + arrow keys always go to PTY, never to browser focus traversal.
+    // Also explicitly handle Ctrl+V / Cmd+V paste — xterm.js by default treats
+    // Ctrl+V as literal ^V on non-mac, so paste needs to be intercepted.
     term.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
       if (ev.type !== "keydown") return true;
       if (ev.key === "Tab") {
         ev.preventDefault();
         return true;
+      }
+      const mod = ev.ctrlKey || ev.metaKey;
+      if (mod && !ev.shiftKey && !ev.altKey && (ev.key === "v" || ev.key === "V")) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        navigator.clipboard.readText().then((text) => {
+          if (text) WritePty(tabId, text).catch((err) => console.warn("write pty:", err));
+        }).catch((err) => console.warn("clipboard read:", err));
+        return false;
+      }
+      if (mod && !ev.shiftKey && !ev.altKey && (ev.key === "c" || ev.key === "C")) {
+        const sel = term.getSelection();
+        if (sel) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          navigator.clipboard.writeText(sel).catch((err) => console.warn("clipboard write:", err));
+          return false;
+        }
       }
       return true;
     });

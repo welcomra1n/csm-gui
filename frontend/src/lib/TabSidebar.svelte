@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tabs, activeTabId } from "./store";
+  import { tabs, activeTabId, leftOpen } from "./store";
   import { KillPty, RenameAlias, GenerateRecap, DeleteSession } from "../../wailsjs/go/main/App.js";
   import ProviderIcon from "./ProviderIcon.svelte";
   import ContextMenu from "./ContextMenu.svelte";
@@ -162,7 +162,9 @@
 
   async function closeAll() {
     const list = $tabs.slice();
-    for (const t of list) {
+    const toKill = list.filter((t) => !t.pinned);
+    if (!toKill.length) return;
+    for (const t of toKill) {
       try {
         await KillPty(t.id);
       } catch (err) {
@@ -172,16 +174,21 @@
         GenerateRecap(t.sessionId, true).catch((e) => console.warn("recap:", e));
       }
     }
-    tabs.set([]);
+    const killSet = new Set(toKill.map((t) => t.id));
+    tabs.update((arr) => arr.filter((t) => !killSet.has(t.id)));
   }
 </script>
 
 <div class="sidebar">
   <div class="header">
     <span>SESSIONS · {$tabs.length}</span>
-    {#if $tabs.length > 0}
-      <button class="close-all" on:click={closeAll} title="close all tabs">✕ all</button>
-    {/if}
+    <div class="header-actions">
+      {#if $tabs.length > 0}
+        {@const unpinnedCount = $tabs.filter((t) => !t.pinned).length}
+        <button class="close-all" on:click={closeAll} title={`close ${unpinnedCount} unpinned tabs (pinned kept)`} disabled={unpinnedCount === 0}>✕ {unpinnedCount}</button>
+      {/if}
+      <button class="hide-side" on:click={() => leftOpen.set(false)} title="hide tab sidebar">◀</button>
+    </div>
   </div>
   {#if $tabs.length === 0}
     <div class="empty">no open sessions</div>
@@ -266,6 +273,32 @@
   .close-all:hover {
     color: var(--accent-action);
     border-color: var(--accent-action);
+  }
+
+  .close-all:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .hide-side {
+    color: var(--fg-mute);
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    font-size: calc(var(--ui-fs-xs) - 1px);
+    background: none;
+    cursor: pointer;
+  }
+
+  .hide-side:hover {
+    color: var(--fg);
+    border-color: var(--fg);
   }
 
   .empty {

@@ -637,7 +637,9 @@ func refreshActiveIDs() map[string]activeInfo {
 	}
 
 	if runtime.GOOS == "windows" {
-		if out, err := exec.Command("cmd", "/c", "wmic process where \"commandline like '%--resume%'\" get processid,commandline /format:list").CombinedOutput(); err == nil {
+		c := exec.Command("cmd", "/c", "wmic process where \"commandline like '%--resume%'\" get processid,commandline /format:list")
+		hideConsole(c)
+		if out, err := c.CombinedOutput(); err == nil {
 			lines := strings.Split(string(out), "\n")
 			var cmdLine, pid string
 			for _, line := range lines {

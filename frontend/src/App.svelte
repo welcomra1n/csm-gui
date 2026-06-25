@@ -107,7 +107,6 @@
   <aside class="left" class:collapsed={!$leftOpen}>
     {#if $leftOpen}
       <TabSidebar />
-      <button class="collapse-btn collapse-left" on:click={() => leftOpen.set(false)} title="hide tab sidebar">◀</button>
     {:else}
       <button class="expand-strip" on:click={() => leftOpen.set(true)} title="show tab sidebar">▶</button>
     {/if}
