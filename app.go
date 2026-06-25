@@ -361,17 +361,22 @@ func (a *App) ApplyUpdate() (string, error) {
 		return string(out1) + "\n" + string(out2), err
 	}
 	if runtime.GOOS == "windows" {
-		scoop, err := exec.LookPath("scoop")
-		if err != nil {
-			return "", fmt.Errorf("scoop not found in PATH")
+		// Refresh bucket list first (can run while csm.exe is alive).
+		if scoop, err := exec.LookPath("scoop"); err == nil {
+			c1 := exec.Command(scoop, "update")
+			hideConsole(c1)
+			_, _ = c1.CombinedOutput()
 		}
-		c1 := exec.Command(scoop, "update")
-		hideConsole(c1)
-		out1, _ := c1.CombinedOutput()
-		c2 := exec.Command(scoop, "update", "csm-gui")
-		hideConsole(c2)
-		out2, err := c2.CombinedOutput()
-		return string(out1) + "\n" + string(out2), err
+		// The actual `scoop update csm-gui` must happen AFTER this process
+		// exits or scoop fails to overwrite the locked csm.exe. Schedule
+		// a detached VBS that waits for our exit, runs scoop, then relaunches.
+		exe, _ := os.Executable()
+		spawnWindowsUpdater(exe)
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			wruntime.Quit(a.ctx)
+		}()
+		return "updater scheduled — app will close and relaunch when scoop finishes", nil
 	}
 	return "", fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 }

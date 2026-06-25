@@ -5,3 +5,7 @@ package main
 func spawnWindowsRelauncher(exe string) {
 	// no-op on non-Windows
 }
+
+func spawnWindowsUpdater(exe string) {
+	// no-op on non-Windows
+}
