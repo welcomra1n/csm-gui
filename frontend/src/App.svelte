@@ -11,7 +11,7 @@
   let settingsOpen = false;
   let permsOpen = false;
   let updateToast: string | null = null;
-  import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth, progressActive, previewOpen } from "./lib/store";
+  import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth, progressActive, previewOpen, rightOpen, leftOpen } from "./lib/store";
 
   function handleKey(e: KeyboardEvent) {
     const mod = e.metaKey || e.ctrlKey;
@@ -103,9 +103,14 @@
   });
 </script>
 
-<div class="app" style="grid-template-columns: {$leftWidth}px 4px 1fr 4px {$rightWidth}px;">
-  <aside class="left">
-    <TabSidebar />
+<div class="app" style="grid-template-columns: {$leftOpen ? $leftWidth + 'px' : '24px'} 4px 1fr 4px {$rightOpen ? $rightWidth + 'px' : '24px'};">
+  <aside class="left" class:collapsed={!$leftOpen}>
+    {#if $leftOpen}
+      <TabSidebar />
+      <button class="collapse-btn collapse-left" on:click={() => leftOpen.set(false)} title="hide tab sidebar">◀</button>
+    {:else}
+      <button class="expand-strip" on:click={() => leftOpen.set(true)} title="show tab sidebar">▶</button>
+    {/if}
   </aside>
 
   <div class="splitter left-split" on:mousedown={() => startDrag("left")}></div>
@@ -131,24 +136,32 @@
 
   <div class="splitter right-split" on:mousedown={() => startDrag("right")}></div>
 
-  <aside class="right">
-    <div class="right-top" class:full={!$previewOpen}>
-      <SessionBrowser />
-    </div>
-    {#if $previewOpen}
-      <div class="right-bottom">
-        <div class="preview-header">
-          <span>PREVIEW</span>
-          <button class="preview-close" on:click={() => previewOpen.set(false)} title="hide preview (collapse)">▼ hide</button>
-        </div>
-        <div class="preview-body">
-          <Preview />
-        </div>
+  <aside class="right" class:collapsed={!$rightOpen}>
+    {#if $rightOpen}
+      <div class="right-header">
+        <span>SESSIONS</span>
+        <button class="collapse-btn" on:click={() => rightOpen.set(false)} title="hide session sidebar">▶</button>
       </div>
+      <div class="right-top" class:full={!$previewOpen}>
+        <SessionBrowser />
+      </div>
+      {#if $previewOpen}
+        <div class="right-bottom">
+          <div class="preview-header">
+            <span>PREVIEW</span>
+            <button class="preview-close" on:click={() => previewOpen.set(false)} title="hide preview (collapse)">▼ hide</button>
+          </div>
+          <div class="preview-body">
+            <Preview />
+          </div>
+        </div>
+      {:else}
+        <button class="preview-show-bar" on:click={() => previewOpen.set(true)} title="show preview">
+          ▲ show preview
+        </button>
+      {/if}
     {:else}
-      <button class="preview-show-bar" on:click={() => previewOpen.set(true)} title="show preview">
-        ▲ show preview
-      </button>
+      <button class="expand-strip" on:click={() => rightOpen.set(true)} title="show session sidebar">◀</button>
     {/if}
   </aside>
 
@@ -161,6 +174,8 @@
     <span>{$statusText || `${$tabs.length} tabs`}</span>
     <span class="spacer"></span>
     <span class="zoom">{$fontSize}px</span>
+    <button class="gear" on:click={() => leftOpen.update((v) => !v)} title={$leftOpen ? "hide tabs" : "show tabs"}>{$leftOpen ? "◀▦" : "▦▶"}</button>
+    <button class="gear" on:click={() => rightOpen.update((v) => !v)} title={$rightOpen ? "hide sessions" : "show sessions"}>{$rightOpen ? "▦▶" : "◀▦"}</button>
     <button class="gear" on:click={() => previewOpen.update((v) => !v)} title={$previewOpen ? "hide preview" : "show preview"}>{$previewOpen ? "▤" : "▣"}</button>
     <button class="gear" on:click={() => (settingsOpen = true)} title="settings">⚙</button>
   </div>
@@ -214,6 +229,63 @@
     grid-area: left;
     background: var(--bg-elev);
     overflow: hidden;
+    position: relative;
+  }
+
+  .left.collapsed, .right.collapsed {
+    background: var(--bg-elev);
+  }
+
+  .expand-strip {
+    width: 100%;
+    height: 100%;
+    background: var(--bg-elev);
+    color: var(--fg-mute);
+    border: none;
+    cursor: pointer;
+    font-size: var(--ui-fs);
+    writing-mode: vertical-rl;
+    letter-spacing: 4px;
+    padding: 8px 0;
+  }
+
+  .expand-strip:hover {
+    color: var(--fg);
+    background: var(--bg-hover);
+  }
+
+  .collapse-btn {
+    background: none;
+    border: 1px solid var(--border-strong);
+    color: var(--fg-mute);
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: var(--ui-fs-xs);
+    border-radius: 3px;
+  }
+
+  .collapse-btn:hover {
+    color: var(--fg);
+    border-color: var(--fg);
+  }
+
+  .collapse-left {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+  }
+
+  .right-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background: var(--bg-elev);
+    border-bottom: 1px solid var(--border-strong);
+    font-size: var(--ui-fs-xs);
+    color: var(--fg-mute);
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
   }
 
   .center {

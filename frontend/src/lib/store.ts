@@ -4,25 +4,40 @@ import type { Session, Tab, SidebarMode } from "./types";
 export const tabs = writable<Tab[]>([]);
 export const activeTabId = writable<string | null>(null);
 
-// Persist tab metadata via backend metadata.json so it survives app updates
+// Persist tab metadata via backend metadata.json so it survives app updates.
+// Debounce kept short (60ms) AND a final flush runs on beforeunload so
+// quick close after toggling pin doesn't lose state.
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let lastSnapshot: any[] = [];
+async function flushSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  try {
+    const mod = await import("../../wailsjs/go/main/App.js");
+    await mod.SaveOpenTabs(lastSnapshot as any);
+  } catch (e) {
+    console.warn("SaveOpenTabs:", e);
+  }
+}
 tabs.subscribe((arr) => {
+  lastSnapshot = arr.map((t) => ({
+    sessionId: t.sessionId || "",
+    title: t.title,
+    provider: t.provider || "claude",
+    pinned: !!t.pinned,
+  }));
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    try {
-      const snap = arr.map((t) => ({
-        sessionId: t.sessionId || "",
-        title: t.title,
-        provider: t.provider || "claude",
-        pinned: !!t.pinned,
-      }));
-      const mod = await import("../../wailsjs/go/main/App.js");
-      await mod.SaveOpenTabs(snap as any);
-    } catch (e) {
-      console.warn("SaveOpenTabs:", e);
-    }
-  }, 250);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    void flushSave();
+  }, 60);
 });
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => { void flushSave(); });
+  window.addEventListener("pagehide", () => { void flushSave(); });
+}
 
 export async function loadSavedTabs(): Promise<{ sessionId?: string; title: string; provider?: string; pinned?: boolean }[]> {
   try {
@@ -59,6 +74,14 @@ rightWidth.subscribe((v) => localStorage.setItem("csm-right-w", String(v)));
 const savedPreviewOpen = localStorage.getItem("csm-preview-open");
 export const previewOpen = writable<boolean>(savedPreviewOpen === null ? true : savedPreviewOpen === "1");
 previewOpen.subscribe((v) => localStorage.setItem("csm-preview-open", v ? "1" : "0"));
+
+const savedRightOpen = localStorage.getItem("csm-right-open");
+export const rightOpen = writable<boolean>(savedRightOpen === null ? true : savedRightOpen === "1");
+rightOpen.subscribe((v) => localStorage.setItem("csm-right-open", v ? "1" : "0"));
+
+const savedLeftOpen = localStorage.getItem("csm-left-open");
+export const leftOpen = writable<boolean>(savedLeftOpen === null ? true : savedLeftOpen === "1");
+leftOpen.subscribe((v) => localStorage.setItem("csm-left-open", v ? "1" : "0"));
 
 export const progressActive = writable<number>(0); // counter; >0 = busy
 export function startProgress() { progressActive.update((n) => n + 1); }
