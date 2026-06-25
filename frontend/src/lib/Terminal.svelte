@@ -4,7 +4,7 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { WebLinksAddon } from "@xterm/addon-web-links";
   import "@xterm/xterm/css/xterm.css";
-  import { EventsOn, EventsOff, OnFileDrop, OnFileDropOff } from "../../wailsjs/runtime/runtime.js";
+  import { EventsOn, EventsOff, OnFileDrop, OnFileDropOff, WindowShow } from "../../wailsjs/runtime/runtime.js";
   import { WritePty, ResizePty, SaveClipboardImage } from "../../wailsjs/go/main/App.js";
   import { fontSize, activeTabId, tabs, leftWidth, rightWidth } from "./store";
 
@@ -70,7 +70,7 @@
 
     term = new Terminal({
       fontFamily:
-        '"D2Coding", Menlo, Monaco, "Courier New", monospace, "Apple Color Emoji", "Segoe UI Emoji"',
+        '"D2Coding", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", Menlo, Monaco, "Courier New", monospace',
       fontSize: currentFontSize,
       lineHeight: 1.2,
       theme: {
@@ -242,14 +242,50 @@
     });
 
     let trustAnswered = false;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    let everWasWorking = false;
+    function scheduleIdleNotif() {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (!everWasWorking) return;
+        tabs.update((arr) =>
+          arr.map((t) => {
+            if (t.id !== tabId) return t;
+            if (t.state === "idle") return t;
+            return { ...t, state: "idle", stateChangedAt: Date.now() };
+          }),
+        );
+        const tab = $tabs.find((t) => t.id === tabId);
+        if (!tab) return;
+        const isActive = $activeTabId === tabId && document.hasFocus();
+        if (isActive) return; // user already watching
+        try {
+          if ("Notification" in window && Notification.permission === "granted") {
+            const n = new Notification("작업 완료", {
+              body: tab.title || "세션 응답 끝",
+              silent: false,
+              tag: `csm-done-${tabId}`,
+            });
+            n.onclick = () => {
+              try { WindowShow(); } catch {}
+              activeTabId.set(tabId);
+              window.focus();
+              n.close();
+            };
+          }
+        } catch (e) {
+          console.warn("notify:", e);
+        }
+      }, 2500);
+    }
     const outputEvent = `pty:output:${tabId}`;
     EventsOn(outputEvent, (data: string) => {
       term.write(data);
       const now = Date.now();
+      everWasWorking = true;
       tabs.update((arr) =>
         arr.map((t) => {
           if (t.id !== tabId) return t;
-          // If previously idle (>2.5s of silence), this is a new working burst
           const wasIdle = !t.lastActive || now - t.lastActive > 2500;
           return {
             ...t,
@@ -259,6 +295,7 @@
           };
         }),
       );
+      scheduleIdleNotif();
       if (!trustAnswered && /trust.*folder|yes,?\s*proceed|do you trust/i.test(data)) {
         trustAnswered = true;
         setTimeout(() => {
