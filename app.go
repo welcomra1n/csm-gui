@@ -147,6 +147,34 @@ func (a *App) SetSessionTagsBulk(ids []string, tags []string) error {
 	return nil
 }
 
+// RemoveTagFromSessions deletes a single tag from each provided session
+// id's tag set. No-op if the tag wasn't set.
+func (a *App) RemoveTagFromSessions(ids []string, tag string) error {
+	tag = strings.TrimSpace(tag)
+	if tag == "" || len(ids) == 0 {
+		return nil
+	}
+	meta := loadMetadata()
+	if meta.SessionTags == nil {
+		return nil
+	}
+	for _, id := range ids {
+		cur := meta.SessionTags[id]
+		if len(cur) == 0 {
+			continue
+		}
+		out := cur[:0]
+		for _, t := range cur {
+			if t != tag {
+				out = append(out, t)
+			}
+		}
+		meta.SessionTags[id] = out
+	}
+	saveMetadata(meta)
+	return nil
+}
+
 // AddTagToSessions merges a single tag into the existing tag set of each
 // provided session id. Duplicates are skipped.
 func (a *App) AddTagToSessions(ids []string, tag string) error {

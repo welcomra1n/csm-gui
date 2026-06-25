@@ -9,6 +9,8 @@
     RenameAlias,
     SetSessionTag,
     SetSessionTagsBulk,
+    AddTagToSessions,
+    RemoveTagFromSessions,
     ForkSession,
     DeleteSession,
     DeleteSessions,
@@ -579,13 +581,21 @@
   async function applyTagModal(tags: string[]) {
     if (!tagModal) return;
     const ids = tagModal.sessions.map((s) => s.id);
+    const initial = tagModal.initial || [];
     try {
       if (ids.length === 1) {
+        // Single-session edit overwrites — user sees full tag list in modal.
         await SetSessionTag(ids[0], tags);
       } else {
-        await SetSessionTagsBulk(ids, tags);
+        // Multi-select diffs against the intersection so unique tags on
+        // individual sessions are preserved. Only chips the user
+        // explicitly added or removed are propagated.
+        const added = tags.filter((t) => !initial.includes(t));
+        const removed = initial.filter((t) => !tags.includes(t));
+        for (const t of added) await AddTagToSessions(ids, t);
+        for (const t of removed) await RemoveTagFromSessions(ids, t);
       }
-      statusText.set(`tagged ${ids.length} session(s) with ${tags.length} tag(s)`);
+      statusText.set(`tagged ${ids.length} session(s)`);
       tagModal = null;
       await refresh();
     } catch (e: any) {
