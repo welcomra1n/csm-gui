@@ -5,11 +5,17 @@ export const tabs = writable<Tab[]>([]);
 export const activeTabId = writable<string | null>(null);
 
 // Persist tab metadata via backend metadata.json so it survives app updates.
-// Debounce kept short (60ms) AND a final flush runs on beforeunload so
-// quick close after toggling pin doesn't lose state.
+// Save is BLOCKED until enableTabSave() is called (after restoreTabs finishes),
+// otherwise the initial empty [] from store init races against loadSavedTabs
+// and wipes the saved pin state on every boot.
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let lastSnapshot: any[] = [];
+let saveEnabled = false;
+export function enableTabSave() {
+  saveEnabled = true;
+}
 async function flushSave() {
+  if (!saveEnabled) return;
   if (saveTimer) {
     clearTimeout(saveTimer);
     saveTimer = null;
@@ -28,6 +34,7 @@ tabs.subscribe((arr) => {
     provider: t.provider || "claude",
     pinned: !!t.pinned,
   }));
+  if (!saveEnabled) return;
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;

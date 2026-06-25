@@ -53,9 +53,22 @@ func spawnWindowsUpdater(exe string) {
 	}
 	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("csm-update-%d.vbs", os.Getpid()))
 	esc := strings.ReplaceAll(exe, `"`, `""`)
+	// scoop is a PowerShell function loaded by the user's profile, so we
+	// MUST NOT pass -NoProfile or the function is undefined and the update
+	// silently no-ops. Use the scoop.cmd shim path directly via cmd.exe
+	// as a fallback that doesn't depend on PS profile.
 	script := `Set sh = CreateObject("WScript.Shell")
 WScript.Sleep 3000
-sh.Run "powershell -NoProfile -WindowStyle Hidden -Command ""scoop update csm-gui""", 0, True
+Dim home, shim
+home = sh.ExpandEnvironmentStrings("%USERPROFILE%")
+shim = home & "\scoop\shims\scoop.cmd"
+Dim fso
+Set fso = CreateObject("Scripting.FileSystemObject")
+If fso.FileExists(shim) Then
+  sh.Run "cmd /c """ & shim & """ update csm-gui", 0, True
+Else
+  sh.Run "powershell -WindowStyle Hidden -Command ""scoop update csm-gui""", 0, True
+End If
 WScript.Sleep 500
 sh.Run """` + esc + `""", 1, False
 `

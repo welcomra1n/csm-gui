@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { sessions, tabs, activeTabId, nextTabId, statusText, selectedSessionId, focusSearch, startProgress, endProgress, loadSavedTabs } from "./store";
+  import { sessions, tabs, activeTabId, nextTabId, statusText, selectedSessionId, focusSearch, startProgress, endProgress, loadSavedTabs, enableTabSave } from "./store";
   import type { Session } from "./types";
   import {
     ListSessions,
@@ -172,7 +172,10 @@
     if (restored) return;
     restored = true;
     const saved = await loadSavedTabs();
-    if (!saved.length) return;
+    if (!saved.length) {
+      enableTabSave();
+      return;
+    }
     // Clear current tabs first (they were rehydrated from localStorage but PTY-less)
     tabs.set([]);
     for (const s of saved) {
@@ -214,6 +217,7 @@
       }
     }
     statusText.set(`restored ${saved.length} tab${saved.length > 1 ? "s" : ""}`);
+    enableTabSave();
   }
 
   function notify(title: string, body: string) {
