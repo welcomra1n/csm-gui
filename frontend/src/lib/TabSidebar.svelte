@@ -14,6 +14,14 @@
   let nowTick = Date.now();
   setInterval(() => (nowTick = Date.now()), 1000);
 
+  const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  let spinnerIdx = 0;
+  let spinnerFrame = SPINNER_FRAMES[0];
+  setInterval(() => {
+    spinnerIdx = (spinnerIdx + 1) % SPINNER_FRAMES.length;
+    spinnerFrame = SPINNER_FRAMES[spinnerIdx];
+  }, 80);
+
   const IDLE_AFTER_MS = 2500;
 
   function tabState(tab: Tab): "working" | "idle" | "unknown" {
@@ -212,7 +220,7 @@
         title={tooltip(tab)}
       >
         <span class="num">{tab.pinned ? "★" : String(i + 1).padStart(2, "0")}</span>
-        <span class="state-dot" class:working={st === "working"} class:idle={st === "idle"}></span>
+        <span class="state-dot" class:working={st === "working"} class:idle={st === "idle"}>{st === "working" ? spinnerFrame : ""}</span>
         <span class="icon"><ProviderIcon provider={tab.provider || "claude"} size={12} /></span>
         <span class="title">{tab.title}</span>
         <span class="close" on:click={(e) => closeTab(e, tab.id)}>×</span>
@@ -355,26 +363,27 @@
   }
 
   .state-dot {
-    width: 6px;
-    height: 6px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     flex-shrink: 0;
     background: var(--fg-mute);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    line-height: 1;
+    color: var(--fg-mute);
   }
 
   .state-dot.working {
-    background: var(--accent-pinned);
-    box-shadow: 0 0 5px var(--accent-pinned);
-    animation: working-pulse 0.8s ease-in-out infinite;
+    background: transparent;
+    color: var(--accent-pinned);
+    text-shadow: 0 0 4px var(--accent-pinned);
   }
 
   .state-dot.idle {
     background: var(--fg-mute);
-  }
-
-  @keyframes working-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.35; }
   }
 
   .icon {
