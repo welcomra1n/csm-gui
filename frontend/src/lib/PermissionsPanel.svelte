@@ -114,7 +114,8 @@
     color: var(--fg-mute);
     font-size: var(--ui-fs-xs);
     margin-top: 2px;
-    line-height: 1.4;
+    line-height: 1.5;
+    white-space: pre-wrap;
   }
 
   .badge {

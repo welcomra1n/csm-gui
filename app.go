@@ -443,31 +443,35 @@ func (a *App) ListPermissions() []Permission {
 
 	return []Permission{
 		{
-			Key:         "fs-claude",
-			Label:       "~/.claude 디렉토리 읽기",
-			Description: "Claude Code 세션(JSONL), 메타데이터, 별칭, 폴더, 태그 저장 위치. 필수.",
-			Category:    "os",
-			Required:    true,
-			SystemURL:   osFullDisk,
-			Enabled:     true,
+			Key:      "fs-access",
+			Label:    "파일 접근권한",
+			Category: "os",
+			Required: true,
+			SystemURL: osFullDisk,
+			Enabled:  true,
+			Description: "다음 경로 읽기/쓰기:\n" +
+				"• ~/.claude/projects/**/*.jsonl — Claude Code 세션 본문 (읽기)\n" +
+				"• ~/.claude/csm-metadata.json — 별칭, 폴더, 태그, 핀, 열린 탭, recap (읽기/쓰기)\n" +
+				"• ~/.claude/session-trash/ — 삭제한 세션 보관 (쓰기)\n" +
+				"• ~/.codex/sessions/**/*.jsonl — Codex CLI 세션 (읽기)\n" +
+				"• ~/.codex/session_index.jsonl — Codex 인덱스 (읽기/쓰기, 삭제 시)\n" +
+				"• /tmp, $TMPDIR — 클립보드 이미지 임시 저장 (쓰기)\n" +
+				"• /Applications/csm.app, /opt/homebrew/Caskroom/csm-gui — 업데이트 후 재시작 시 위치 확인 (읽기)",
 		},
 		{
-			Key:         "fs-codex",
-			Label:       "~/.codex 디렉토리 읽기",
-			Description: "Codex CLI 세션 인덱스 + JSONL. 필수.",
-			Category:    "os",
-			Required:    true,
-			SystemURL:   osFullDisk,
-			Enabled:     true,
-		},
-		{
-			Key:         "pty-exec",
-			Label:       "claude / codex / shell 실행",
-			Description: "PTY를 통해 CLI 프로세스를 띄우고 입출력을 중계. 필수.",
-			Category:    "app",
-			Required:    true,
-			SystemURL:   "",
-			Enabled:     true,
+			Key:      "pty-exec",
+			Label:    "외부 CLI 실행 권한",
+			Category: "app",
+			Required: true,
+			SystemURL: "",
+			Enabled:  true,
+			Description: "다음 바이너리를 PTY로 실행:\n" +
+				"• claude — Claude Code CLI 세션\n" +
+				"• codex — Codex CLI 세션\n" +
+				"• zsh / pwsh.exe — 일반 셸 탭\n" +
+				"• node.exe — Windows에서 npm .cmd shim 우회용 (콘솔 플리커 방지)\n" +
+				"• brew / scoop — 자동 업데이트\n" +
+				"• wscript.exe (Windows) / open (macOS) — 업데이트 후 자동 재시작",
 		},
 		{
 			Key:         "notifications",
@@ -488,13 +492,16 @@ func (a *App) ListPermissions() []Permission {
 			Enabled:     get("auto-recap", true),
 		},
 		{
-			Key:         "update-check",
-			Label:       "업데이트 자동 확인",
-			Description: "설정창 열 때 GitHub에서 최신 릴리스 조회.",
-			Category:    "app",
-			Required:    false,
-			SystemURL:   "",
-			Enabled:     get("update-check", true),
+			Key:      "update-check",
+			Label:    "네트워크 접근 (업데이트 확인)",
+			Category: "app",
+			Required: false,
+			SystemURL: "",
+			Enabled:  get("update-check", true),
+			Description: "설정창 열 때 GitHub에 HTTPS GET 요청:\n" +
+				"• api.github.com/repos/welcomra1n/csm-gui/releases/latest — 최신 버전 조회\n" +
+				"• 응답으로 받은 zip URL만 사용 (다른 호스트 안 건드림)\n" +
+				"• 끄면 설정창에서 수동 클릭 시에만 조회",
 		},
 	}
 }
