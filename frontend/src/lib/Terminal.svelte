@@ -202,15 +202,39 @@
 
     containerEl.addEventListener("click", () => term.focus());
 
-    // File drop: image files get copied into the OS temp dir (matching the
-    // clipboard-paste flow) so claude / codex get a stable disposable path;
-    // non-image files and directories pass through with their original path.
+    // File drop.
+    // HTML5 drop handler fires synchronously when the user releases the
+    // mouse in the WebView. Wails OnFileDrop may also fire for the same
+    // drop from the native layer. To avoid writing the same file twice,
+    // the HTML5 handler records every basename it touches into
+    // htmlHandled, and the Wails handler waits a tick then drops any
+    // path whose basename was already recorded.
+    const htmlHandled = new Set<string>();
+    function rememberHandled(name: string) {
+      htmlHandled.add(name);
+      setTimeout(() => htmlHandled.delete(name), 1500);
+    }
+    function basename(p: string) {
+      const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+      return i >= 0 ? p.slice(i + 1) : p;
+    }
+    function writePaths(arr: string[]) {
+      if (arr.length === 0) return;
+      const quoted = arr
+        .map((p) => (p.includes(" ") ? `"${p}"` : p))
+        .join(" ");
+      WritePty(tabId, quoted + " ").catch(() => {});
+    }
+
     OnFileDrop(async (_x, _y, paths) => {
       if ($activeTabId !== tabId) return;
       if (!paths || !paths.length) return;
+      // Give the HTML5 handler a tick to claim its files first.
+      await new Promise((r) => setTimeout(r, 80));
       const mod = await import("../../wailsjs/go/main/App.js");
       const processed: string[] = [];
       for (const p of paths) {
+        if (htmlHandled.has(basename(p))) continue;
         try {
           const out = await mod.ProcessDroppedPath(p);
           processed.push(out || p);
@@ -218,18 +242,9 @@
           processed.push(p);
         }
       }
-      const quoted = processed
-        .map((p) => (p.includes(" ") ? `"${p}"` : p))
-        .join(" ");
-      WritePty(tabId, quoted + " ").catch(() => {});
+      writePaths(processed);
     }, false);
 
-    // Fallback HTML5 drop listener — Wails OnFileDrop sometimes does not
-    // fire on macOS WKWebView when files are dragged from Finder onto the
-    // terminal area. This handler reads the drop directly from the
-    // browser's DataTransfer and routes image blobs through
-    // SaveClipboardImage so they still end up as a real filesystem path
-    // pasted into the PTY.
     containerEl.addEventListener("dragover", (e: DragEvent) => {
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
@@ -239,27 +254,20 @@
       const files = e.dataTransfer?.files;
       if (!files || files.length === 0) return;
       e.preventDefault();
-      e.stopPropagation();
-      const paths: string[] = [];
+      const collected: string[] = [];
       for (const f of Array.from(files)) {
-        // Wails / WebView2 / WKWebView expose the absolute file path on
-        // dropped files as a non-standard `path` property on File. Use it
-        // when available so non-image files (folders, source files) keep
-        // their real paths.
+        rememberHandled(f.name);
         const realPath = (f as any).path as string | undefined;
         if (realPath) {
           try {
             const mod = await import("../../wailsjs/go/main/App.js");
             const out = await mod.ProcessDroppedPath(realPath);
-            paths.push(out || realPath);
+            collected.push(out || realPath);
           } catch {
-            paths.push(realPath);
+            collected.push(realPath);
           }
           continue;
         }
-        // No filesystem path available (sandboxed browser drop). Read the
-        // blob and save through the same code path the clipboard paste
-        // already uses.
         if (f.type.startsWith("image/")) {
           try {
             const dataUrl: string = await new Promise((resolve, reject) => {
@@ -269,17 +277,13 @@
               r.readAsDataURL(f);
             });
             const path: string = await SaveClipboardImage(dataUrl);
-            paths.push(path);
+            collected.push(path);
           } catch (err) {
             console.warn("drop image:", err);
           }
         }
       }
-      if (paths.length === 0) return;
-      const quoted = paths
-        .map((p) => (p.includes(" ") ? `"${p}"` : p))
-        .join(" ");
-      WritePty(tabId, quoted + " ").catch(() => {});
+      writePaths(collected);
     });
 
     // Clipboard paste: if image present, save to temp then paste path
