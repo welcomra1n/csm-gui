@@ -289,15 +289,13 @@
       }
       writePaths(collected);
     };
+    // document-level only; containerEl listener would bubble to document
+    // and fire the handler twice for the same drop.
     document.addEventListener("dragover", dragOverHandler);
     document.addEventListener("drop", dropHandler);
-    containerEl.addEventListener("dragover", dragOverHandler);
-    containerEl.addEventListener("drop", dropHandler);
     dropCleanups.push(
       () => document.removeEventListener("dragover", dragOverHandler),
       () => document.removeEventListener("drop", dropHandler),
-      () => containerEl.removeEventListener("dragover", dragOverHandler),
-      () => containerEl.removeEventListener("drop", dropHandler),
     );
 
     // Clipboard paste: if image present, save to temp then paste path
