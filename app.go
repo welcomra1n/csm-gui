@@ -542,6 +542,44 @@ func (a *App) SaveClipboardImage(base64Data string) (string, error) {
 	return path, nil
 }
 
+// ProcessDroppedPath mirrors the clipboard-paste flow for dropped files:
+// image files are copied into the OS temp dir under a csm-drop-* name and
+// the new temp path is returned, matching how SaveClipboardImage behaves
+// for clipboard images. Non-image files and directories pass through
+// unchanged so dropping a project folder still inserts the real path.
+func (a *App) ProcessDroppedPath(srcPath string) (string, error) {
+	if srcPath == "" {
+		return "", fmt.Errorf("empty path")
+	}
+	info, err := os.Stat(srcPath)
+	if err != nil {
+		return srcPath, nil
+	}
+	if info.IsDir() {
+		return srcPath, nil
+	}
+	ext := strings.ToLower(filepath.Ext(srcPath))
+	isImage := false
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".svg", ".heic", ".heif":
+		isImage = true
+	}
+	if !isImage {
+		return srcPath, nil
+	}
+	data, err := os.ReadFile(srcPath)
+	if err != nil {
+		return srcPath, nil
+	}
+	tmpDir := os.TempDir()
+	name := fmt.Sprintf("csm-drop-%d%s", time.Now().UnixNano(), ext)
+	dst := filepath.Join(tmpDir, name)
+	if err := os.WriteFile(dst, data, 0644); err != nil {
+		return srcPath, nil
+	}
+	return dst, nil
+}
+
 // OpenURL opens a URL via the system default handler (e.g. System Settings).
 func (a *App) OpenURL(url string) error {
 	if url == "" {

@@ -193,12 +193,23 @@
 
     containerEl.addEventListener("click", () => term.focus());
 
-    // File drop: when user drops files anywhere in csm-gui window,
-    // write the absolute paths into the currently active tab's PTY.
-    OnFileDrop((_x, _y, paths) => {
+    // File drop: image files get copied into the OS temp dir (matching the
+    // clipboard-paste flow) so claude / codex get a stable disposable path;
+    // non-image files and directories pass through with their original path.
+    OnFileDrop(async (_x, _y, paths) => {
       if ($activeTabId !== tabId) return;
       if (!paths || !paths.length) return;
-      const quoted = paths
+      const mod = await import("../../wailsjs/go/main/App.js");
+      const processed: string[] = [];
+      for (const p of paths) {
+        try {
+          const out = await mod.ProcessDroppedPath(p);
+          processed.push(out || p);
+        } catch {
+          processed.push(p);
+        }
+      }
+      const quoted = processed
         .map((p) => (p.includes(" ") ? `"${p}"` : p))
         .join(" ");
       WritePty(tabId, quoted + " ").catch(() => {});
