@@ -484,9 +484,25 @@
       const newId = await ForkSession(s.id);
       statusText.set(`forked: ${s.alias || s.projectName} → ${newId.slice(0, 8)}`);
       await refresh();
-      // Auto-open the fork in a new tab
-      const forked = ($sessions || []).find((x) => x.id === newId);
-      if (forked) openSession(forked);
+      // refresh is async-store; poll briefly for the new session to appear
+      let forked: Session | undefined;
+      for (let i = 0; i < 10; i++) {
+        forked = ($sessions || []).find((x) => x.id === newId);
+        if (forked) break;
+        await new Promise((r) => setTimeout(r, 80));
+      }
+      if (forked) {
+        openSession(forked);
+      } else {
+        // Fallback: construct a minimal Session record using the source
+        // so the user still gets a tab even if discovery lag hides it.
+        openSession({
+          ...s,
+          id: newId,
+          alias: (s.alias || s.projectName) + " (fork)",
+          pinned: false,
+        } as Session);
+      }
     } catch (e: any) {
       statusText.set(`fork failed: ${e?.message || e}`);
     } finally {

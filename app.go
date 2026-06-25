@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -316,9 +317,11 @@ func (a *App) RenameAlias(id string, alias string) error {
 // DeleteSession moves a session's JSONL file to the trash directory.
 // ForkSession duplicates a session's JSONL with a fresh UUID so the user
 // can branch from the same conversation context without overwriting the
-// original. Returns the new session ID. claude reads sessionId from each
-// JSONL line, so every occurrence is rewritten to the new ID. Metadata
-// (folder, tags, alias) is copied with a "(fork)" suffix on the alias.
+// original. Returns the new session ID. Per-line JSON parse is used to
+// rewrite only the sessionId field — naive string replace would also
+// rewrite the id if it happened to appear inside message text. Codex
+// sessions also get appended to ~/.codex/session_index.jsonl, otherwise
+// `codex resume <newId>` would fail to locate the fork.
 func (a *App) ForkSession(id string) (string, error) {
 	src := a.GetSession(id)
 	if src == nil {
@@ -327,17 +330,50 @@ func (a *App) ForkSession(id string) (string, error) {
 	if src.SessionFile == "" {
 		return "", fmt.Errorf("session has no backing file")
 	}
-	data, err := os.ReadFile(src.SessionFile)
+	srcBytes, err := os.ReadFile(src.SessionFile)
 	if err != nil {
 		return "", fmt.Errorf("read source: %w", err)
 	}
 	newID := generateUUID()
-	// Rewrite every occurrence of the old session id.
-	rewritten := strings.ReplaceAll(string(data), id, newID)
+
+	// Per-line rewrite: parse each JSON object, update sessionId-style
+	// fields, then re-emit. Lines that fail to parse are kept verbatim.
+	var outBuf bytes.Buffer
+	for _, raw := range bytes.Split(srcBytes, []byte("\n")) {
+		if len(bytes.TrimSpace(raw)) == 0 {
+			continue
+		}
+		var obj map[string]any
+		if err := json.Unmarshal(raw, &obj); err != nil {
+			outBuf.Write(raw)
+			outBuf.WriteByte('\n')
+			continue
+		}
+		rewriteSessionID(obj, id, newID)
+		enc, err := json.Marshal(obj)
+		if err != nil {
+			outBuf.Write(raw)
+		} else {
+			outBuf.Write(enc)
+		}
+		outBuf.WriteByte('\n')
+	}
 
 	destPath := filepath.Join(filepath.Dir(src.SessionFile), newID+".jsonl")
-	if err := os.WriteFile(destPath, []byte(rewritten), 0644); err != nil {
+	if err := os.WriteFile(destPath, outBuf.Bytes(), 0644); err != nil {
 		return "", fmt.Errorf("write fork: %w", err)
+	}
+	// Touch the file so sorting by modtime puts the fork at the top.
+	now := time.Now()
+	_ = os.Chtimes(destPath, now, now)
+
+	// Codex requires the session to be registered in its index file.
+	if src.Provider == ProviderCodex {
+		if err := appendCodexIndex(newID, src); err != nil {
+			// Roll back the fork file so we don't leave an orphan.
+			os.Remove(destPath)
+			return "", fmt.Errorf("codex index: %w", err)
+		}
 	}
 
 	// Copy metadata (folder, tags, alias suffix).
@@ -358,7 +394,6 @@ func (a *App) ForkSession(id string) (string, error) {
 	}
 	saveMetadata(meta)
 
-	// Alias with (fork) suffix
 	aliases := loadAliases()
 	baseAlias := src.Alias
 	if baseAlias == "" {
@@ -368,6 +403,67 @@ func (a *App) ForkSession(id string) (string, error) {
 	saveAliases(aliases)
 
 	return newID, nil
+}
+
+// rewriteSessionID walks a decoded JSON object and replaces any string
+// value equal to oldID at known session-id fields. Recurses into nested
+// objects/arrays so resume payloads buried under "payload"/"meta" are
+// also covered.
+func rewriteSessionID(v any, oldID, newID string) {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, vv := range t {
+			if s, ok := vv.(string); ok && s == oldID {
+				// Replace the id when the key is something session-id-shaped.
+				lk := strings.ToLower(k)
+				if lk == "sessionid" || lk == "session_id" || lk == "id" || lk == "threadid" || lk == "thread_id" {
+					t[k] = newID
+					continue
+				}
+			}
+			rewriteSessionID(vv, oldID, newID)
+		}
+	case []any:
+		for _, vv := range t {
+			rewriteSessionID(vv, oldID, newID)
+		}
+	}
+}
+
+// appendCodexIndex registers a new session in ~/.codex/session_index.jsonl
+// so `codex resume <id>` finds it.
+func appendCodexIndex(newID string, src *Session) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	indexPath := filepath.Join(home, ".codex", "session_index.jsonl")
+	entry := map[string]string{
+		"id":          newID,
+		"thread_name": (func() string {
+			if src.Alias != "" {
+				return src.Alias + " (fork)"
+			}
+			return src.ProjectName + " (fork)"
+		})(),
+		"updated_at": time.Now().UTC().Format(time.RFC3339),
+		"cwd":        src.ProjectDir,
+	}
+	line, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+	codexIndexMu.Lock()
+	defer codexIndexMu.Unlock()
+	f, err := os.OpenFile(indexPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (a *App) DeleteSession(id string) error {
