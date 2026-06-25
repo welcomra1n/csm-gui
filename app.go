@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -120,6 +121,70 @@ func (a *App) SetSessionTag(id string, tags []string) error {
 	meta.SessionTags[id] = tags
 	saveMetadata(meta)
 	return nil
+}
+
+// SetSessionTagsBulk overwrites the tag list on every provided session id
+// with the same set of tags. Used by the multi-select bulk tag action.
+func (a *App) SetSessionTagsBulk(ids []string, tags []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	meta := loadMetadata()
+	if meta.SessionTags == nil {
+		meta.SessionTags = make(map[string][]string)
+	}
+	for _, id := range ids {
+		meta.SessionTags[id] = tags
+	}
+	saveMetadata(meta)
+	return nil
+}
+
+// AddTagToSessions merges a single tag into the existing tag set of each
+// provided session id. Duplicates are skipped.
+func (a *App) AddTagToSessions(ids []string, tag string) error {
+	tag = strings.TrimSpace(tag)
+	if tag == "" || len(ids) == 0 {
+		return nil
+	}
+	meta := loadMetadata()
+	if meta.SessionTags == nil {
+		meta.SessionTags = make(map[string][]string)
+	}
+	for _, id := range ids {
+		cur := meta.SessionTags[id]
+		dup := false
+		for _, t := range cur {
+			if t == tag {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			meta.SessionTags[id] = append(cur, tag)
+		}
+	}
+	saveMetadata(meta)
+	return nil
+}
+
+// ListAllTags returns the sorted unique set of tags seen across all sessions.
+func (a *App) ListAllTags() []string {
+	meta := loadMetadata()
+	seen := map[string]bool{}
+	for _, tags := range meta.SessionTags {
+		for _, t := range tags {
+			if t = strings.TrimSpace(t); t != "" {
+				seen[t] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for t := range seen {
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // SetSessionFolder assigns a session to a folder.

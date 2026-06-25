@@ -8,6 +8,7 @@
     PinSession,
     RenameAlias,
     SetSessionTag,
+    SetSessionTagsBulk,
     DeleteSession,
     DeleteSessions,
     SetSessionFolder,
@@ -19,6 +20,7 @@
   import ProviderIcon from "./ProviderIcon.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import PromptModal from "./PromptModal.svelte";
+  import TagModal from "./TagModal.svelte";
 
   let filter = "";
   let newMenuOpen = false;
@@ -30,8 +32,87 @@
   }
   let ctxMenu: { x: number; y: number; session: Session } | null = null;
   let modal:
-    | { kind: "rename" | "tag"; session: Session; value: string }
+    | { kind: "rename"; session: Session; value: string }
     | null = null;
+  let tagModal: { sessions: Session[]; initial: string[] } | null = null;
+
+  // Multi-select state
+  let selected = new Set<string>();
+  let lastClickedId: string | null = null;
+  // Sort mode
+  type SortMode = "recent" | "tag" | "name";
+  const savedSort = (typeof localStorage !== "undefined" ? localStorage.getItem("csm-sort") : null) as SortMode | null;
+  let sortMode: SortMode = savedSort || "recent";
+  $: if (typeof localStorage !== "undefined") localStorage.setItem("csm-sort", sortMode);
+
+  function flatVisibleSessions(): Session[] {
+    const out: Session[] = [...pinned];
+    for (const [, list] of folders) out.push(...list);
+    out.push(...regular);
+    return out;
+  }
+
+  function toggleSelect(id: string, e: MouseEvent) {
+    const mod = e.metaKey || e.ctrlKey;
+    const shift = e.shiftKey;
+    if (shift && lastClickedId) {
+      const flat = flatVisibleSessions().map((s) => s.id);
+      const a = flat.indexOf(lastClickedId);
+      const b = flat.indexOf(id);
+      if (a >= 0 && b >= 0) {
+        const [from, to] = a < b ? [a, b] : [b, a];
+        const next = new Set(selected);
+        for (let i = from; i <= to; i++) next.add(flat[i]);
+        selected = next;
+      }
+    } else if (mod) {
+      const next = new Set(selected);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      selected = next;
+    } else {
+      selected = new Set([id]);
+    }
+    lastClickedId = id;
+  }
+
+  function clearSelection() {
+    selected = new Set();
+    lastClickedId = null;
+  }
+
+  async function bulkTag() {
+    if (selected.size === 0) return;
+    const ids = [...selected];
+    // Use intersection of tags as initial chips so common tags persist on save.
+    const tagSets = ids.map((id) => $sessions.find((s) => s.id === id)?.tags || []);
+    let intersection: string[] = tagSets[0] || [];
+    for (const ts of tagSets.slice(1)) {
+      intersection = intersection.filter((t) => ts.includes(t));
+    }
+    const sessObjs = ids.map((id) => $sessions.find((s) => s.id === id)).filter(Boolean) as Session[];
+    tagModal = { sessions: sessObjs, initial: intersection };
+  }
+
+  async function bulkDelete() {
+    if (selected.size === 0) return;
+    const ids = [...selected];
+    if (!confirm(`Delete ${ids.length} session(s)?`)) return;
+    statusText.set(`deleting ${ids.length}…`);
+    startProgress();
+    try {
+      const deleted = await DeleteSessions(ids);
+      const idSet = new Set(ids);
+      tabs.update((arr) => arr.filter((t) => !t.sessionId || !idSet.has(t.sessionId)));
+      sessions.update((arr) => arr.filter((s) => !idSet.has(s.id)));
+      statusText.set(`deleted ${deleted}/${ids.length}`);
+    } catch (e: any) {
+      statusText.set(`fail: ${e?.message || e}`);
+    } finally {
+      endProgress();
+      clearSelection();
+    }
+    await refresh();
+  }
   let newTitleModal: { provider: "claude" | "codex" | "shell"; value: string } | null = null;
   let folderModal: { kind: "create" | "rename"; oldName?: string; value: string } | null = null;
   let folderCtx: { x: number; y: number; folder: string } | null = null;
@@ -165,7 +246,7 @@
     if (!s) return;
     if (mod && (e.key === "t" || e.key === "T")) {
       e.preventDefault();
-      modal = { kind: "tag", session: s, value: (s.tags || []).join(", ") };
+      tagModal = { sessions: [s], initial: s.tags || [] };
     }
   }
   async function restoreTabs() {
@@ -270,6 +351,17 @@
     }
   }
 
+  function handleItemClick(s: Session, e: MouseEvent) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleSelect(s.id, e);
+      return;
+    }
+    if (selected.size > 0) clearSelection();
+    openSession(s);
+  }
+
   async function openSession(s: Session) {
     // Already open? focus existing tab
     const existing = $tabs.find((t) => t.sessionId === s.id);
@@ -332,7 +424,7 @@
     const items: any[] = [
       { label: "rename alias", action: () => (modal = { kind: "rename", session: s, value: s.alias || "" }), key: "F2" },
       { label: s.pinned ? "unpin" : "pin", action: () => togglePin(s), key: "P" },
-      { label: "edit tags", action: () => (modal = { kind: "tag", session: s, value: (s.tags || []).join(", ") }), key: "T" },
+      { label: "edit tags", action: () => (tagModal = { sessions: [s], initial: s.tags || [] }), key: "T" },
       { label: "delete", action: () => deleteSession(s), danger: true, key: "Del" },
     ];
     if (groupSize > 1) {
@@ -396,20 +488,28 @@
 
   async function confirmModal() {
     if (!modal) return;
-    const { kind, session, value } = modal;
+    const { session, value } = modal;
     try {
-      if (kind === "rename") {
-        await RenameAlias(session.id, value.trim());
-        statusText.set(`renamed: ${value.trim() || session.projectName}`);
-      } else if (kind === "tag") {
-        const tags = value
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean);
-        await SetSessionTag(session.id, tags);
-        statusText.set(`tagged: ${tags.length} tag(s)`);
-      }
+      await RenameAlias(session.id, value.trim());
+      statusText.set(`renamed: ${value.trim() || session.projectName}`);
       modal = null;
+      await refresh();
+    } catch (e: any) {
+      statusText.set(`fail: ${e?.message || e}`);
+    }
+  }
+
+  async function applyTagModal(tags: string[]) {
+    if (!tagModal) return;
+    const ids = tagModal.sessions.map((s) => s.id);
+    try {
+      if (ids.length === 1) {
+        await SetSessionTag(ids[0], tags);
+      } else {
+        await SetSessionTagsBulk(ids, tags);
+      }
+      statusText.set(`tagged ${ids.length} session(s) with ${tags.length} tag(s)`);
+      tagModal = null;
       await refresh();
     } catch (e: any) {
       statusText.set(`fail: ${e?.message || e}`);
@@ -425,7 +525,7 @@
       togglePin(s);
     } else if (e.key === "t" || e.key === "T") {
       e.preventDefault();
-      modal = { kind: "tag", session: s, value: (s.tags || []).join(", ") };
+      tagModal = { sessions: [s], initial: s.tags || [] };
     } else if (e.key === "Delete") {
       e.preventDefault();
       deleteSession(s);
@@ -513,18 +613,33 @@
 
   $: filtered = (() => {
     const f = filter.toLowerCase().trim();
-    const all = $sessions;
-    if (!f) return all;
-    return all.filter((s) => {
-      const hay = (
-        s.projectName +
-        " " +
-        (s.alias || "") +
-        " " +
-        (s.lastUserMsg || "")
-      ).toLowerCase();
-      return hay.includes(f);
-    });
+    let all = $sessions;
+    if (f) {
+      all = all.filter((s) => {
+        const hay = (
+          s.projectName +
+          " " +
+          (s.alias || "") +
+          " " +
+          (s.lastUserMsg || "") +
+          " " +
+          (s.tags || []).join(" ")
+        ).toLowerCase();
+        return hay.includes(f);
+      });
+    }
+    if (sortMode === "name") {
+      all = [...all].sort((a, b) => (a.alias || a.projectName).localeCompare(b.alias || b.projectName));
+    } else if (sortMode === "tag") {
+      all = [...all].sort((a, b) => {
+        const ta = (a.tags || [])[0] || "￿";
+        const tb = (b.tags || [])[0] || "￿";
+        const cmp = ta.localeCompare(tb);
+        if (cmp !== 0) return cmp;
+        return (a.alias || a.projectName).localeCompare(b.alias || b.projectName);
+      });
+    }
+    return all;
   })();
 
   $: pinned = filtered.filter((s) => s.pinned);
@@ -637,6 +752,22 @@
     {/if}
   </div>
 
+  <div class="sort-bar">
+    <span class="sort-label">SORT</span>
+    <button class="sort-btn" class:active={sortMode === "recent"} on:click={() => (sortMode = "recent")}>recent</button>
+    <button class="sort-btn" class:active={sortMode === "tag"} on:click={() => (sortMode = "tag")}>tag ↑</button>
+    <button class="sort-btn" class:active={sortMode === "name"} on:click={() => (sortMode = "name")}>name</button>
+  </div>
+
+  {#if selected.size > 0}
+    <div class="selection-bar">
+      <span>{selected.size} selected</span>
+      <button on:click={bulkTag} title="tag selected">🏷</button>
+      <button on:click={bulkDelete} title="delete selected" class="danger">🗑</button>
+      <button on:click={clearSelection} title="clear">✕</button>
+    </div>
+  {/if}
+
   <div class="list">
     {#if pinnedGroups.length > 0}
       <div class="group-header pinned">📌 PINNED · {pinned.length}</div>
@@ -647,12 +778,13 @@
             <button
               class="item"
               class:selected={$selectedSessionId === s.id}
+            class:multi-selected={selected.has(s.id)}
               class:codex={s.provider === "codex"}
               class:pinned={s.pinned}
               class:active={openIds.has(s.id)}
               class:nested={idx > 0}
               on:mouseenter={() => selectedSessionId.set(s.id)}
-              on:click={() => openSession(s)}
+              on:click={(e) => handleItemClick(s, e)}
               on:contextmenu={(e) => openContext(e, s)}
               on:keydown={(e) => handleSessionKey(e, s)}
             >
@@ -701,13 +833,14 @@
           <button
             class="item"
             class:selected={$selectedSessionId === s.id}
+            class:multi-selected={selected.has(s.id)}
             class:codex={s.provider === "codex"}
             class:pinned={s.pinned}
             class:active={openIds.has(s.id)}
             draggable="true"
             on:dragstart={(e) => onSessionDragStart(e, s)}
             on:mouseenter={() => selectedSessionId.set(s.id)}
-            on:click={() => openSession(s)}
+            on:click={(e) => handleItemClick(s, e)}
             on:contextmenu={(e) => openContext(e, s)}
             on:keydown={(e) => handleSessionKey(e, s)}
           >
@@ -744,6 +877,7 @@
           <button
             class="item"
             class:selected={$selectedSessionId === s.id}
+            class:multi-selected={selected.has(s.id)}
             class:codex={s.provider === "codex"}
             class:pinned={s.pinned}
             class:active={openIds.has(s.id)}
@@ -751,7 +885,7 @@
             draggable="true"
             on:dragstart={(e) => onSessionDragStart(e, s)}
             on:mouseenter={() => selectedSessionId.set(s.id)}
-            on:click={() => openSession(s)}
+            on:click={(e) => handleItemClick(s, e)}
             on:contextmenu={(e) => openContext(e, s)}
             on:keydown={(e) => handleSessionKey(e, s)}
           >
@@ -802,15 +936,24 @@
 
 {#if modal}
   <PromptModal
-    title={modal.kind === "rename"
-      ? `Rename: ${modal.session.projectName}`
-      : `Tags (comma-separated): ${modal.session.projectName}`}
+    title={`Rename: ${modal.session.projectName}`}
     bind:value={modal.value}
-    placeholder={modal.kind === "tag" ? "tag1, tag2" : ""}
+    placeholder=""
     confirmLabel="save"
     danger={false}
     onConfirm={confirmModal}
     onCancel={() => (modal = null)}
+  />
+{/if}
+
+{#if tagModal}
+  <TagModal
+    title={tagModal.sessions.length === 1
+      ? `Tags: ${tagModal.sessions[0].alias || tagModal.sessions[0].projectName}`
+      : `Tags for ${tagModal.sessions.length} sessions`}
+    initialTags={tagModal.initial}
+    onConfirm={applyTagModal}
+    onCancel={() => (tagModal = null)}
   />
 {/if}
 
@@ -1177,5 +1320,62 @@
     color: var(--fg-mute);
     padding: 20px 10px;
     font-size: var(--ui-fs-sm);
+  }
+  .sort-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-elev);
+  }
+  .sort-label {
+    font-size: var(--ui-fs-xs);
+    color: var(--fg-mute);
+    letter-spacing: 1px;
+    margin-right: 4px;
+  }
+  .sort-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--fg-mute);
+    padding: 2px 8px;
+    font-size: var(--ui-fs-xs);
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  .sort-btn:hover { color: var(--fg); border-color: var(--fg); }
+  .sort-btn.active {
+    background: rgba(0, 255, 102, 0.1);
+    color: var(--fg);
+    border-color: var(--fg-mute);
+  }
+
+  .selection-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: rgba(0, 255, 102, 0.08);
+    border-bottom: 1px solid var(--fg-mute);
+    font-size: var(--ui-fs-xs);
+    color: var(--fg);
+  }
+  .selection-bar span { flex: 1; }
+  .selection-bar button {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--fg-dim);
+    padding: 2px 6px;
+    font-size: var(--ui-fs);
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  .selection-bar button:hover { color: var(--fg); border-color: var(--fg); }
+  .selection-bar button.danger:hover { color: var(--accent-action); border-color: var(--accent-action); }
+
+  .item.multi-selected {
+    background: rgba(0, 255, 102, 0.12) !important;
+    border-left: 2px solid var(--fg) !important;
   }
 </style>
