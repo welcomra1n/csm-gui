@@ -49,6 +49,7 @@
       if (pending && current === pending && lastSeen !== current) {
         updateToast = `v${current} 업데이트 완료`;
         localStorage.removeItem("csm-pending-version");
+        setTimeout(() => { updateToast = null; }, 5000);
       }
       localStorage.setItem("csm-last-version", current);
       // First-launch permissions intro
@@ -213,7 +214,6 @@
   <div class="toast" on:click={() => (updateToast = null)}>
     <span class="toast-icon">✓</span>
     <span>{updateToast}</span>
-    <span class="toast-hint">(클릭해서 닫기)</span>
   </div>
 {/if}
 
@@ -535,22 +535,22 @@
 
   .toast {
     position: fixed;
-    bottom: 32px;
+    top: 50%;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translate(-50%, -50%);
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 16px;
+    padding: 14px 24px;
     background: var(--bg-elev);
     border: 1px solid var(--fg);
     border-radius: 4px;
     color: var(--fg);
     font-size: var(--ui-fs);
-    box-shadow: 0 0 12px var(--fg-mute), 0 6px 24px rgba(0, 0, 0, 0.7);
+    box-shadow: 0 0 16px var(--fg-mute), 0 8px 32px rgba(0, 0, 0, 0.8);
     cursor: pointer;
     z-index: 9999;
-    animation: toast-in 0.25s ease-out;
+    animation: toast-in 0.25s ease-out, toast-out 0.5s ease-in 4.5s forwards;
   }
 
   .toast:hover {
@@ -569,7 +569,11 @@
   }
 
   @keyframes toast-in {
-    from { opacity: 0; transform: translate(-50%, 8px); }
-    to { opacity: 1; transform: translate(-50%, 0); }
+    from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); }
+    to { opacity: 1; transform: translate(-50%, -50%); }
+  }
+  @keyframes toast-out {
+    from { opacity: 1; transform: translate(-50%, -50%); }
+    to { opacity: 0; transform: translate(-50%, calc(-50% - 8px)); }
   }
 </style>

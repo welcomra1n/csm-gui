@@ -29,6 +29,7 @@
   let resizeObserver: ResizeObserver | null = null;
   let outputUnsubscribe: (() => void) | null = null;
   let exitUnsubscribe: (() => void) | null = null;
+  let dropCleanups: (() => void)[] = [];
 
   let resizeTimer: ReturnType<typeof setTimeout> | null = null;
   let lastCols = 0;
@@ -245,11 +246,14 @@
       writePaths(processed);
     }, false);
 
-    containerEl.addEventListener("dragover", (e: DragEvent) => {
+    // Attach to document so the listener catches drops anywhere in the
+    // window — xterm's helper textarea sometimes intercepts events before
+    // they reach containerEl.
+    const dragOverHandler = (e: DragEvent) => {
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    });
-    containerEl.addEventListener("drop", async (e: DragEvent) => {
+    };
+    const dropHandler = async (e: DragEvent) => {
       if ($activeTabId !== tabId) return;
       const files = e.dataTransfer?.files;
       if (!files || files.length === 0) return;
@@ -284,7 +288,17 @@
         }
       }
       writePaths(collected);
-    });
+    };
+    document.addEventListener("dragover", dragOverHandler);
+    document.addEventListener("drop", dropHandler);
+    containerEl.addEventListener("dragover", dragOverHandler);
+    containerEl.addEventListener("drop", dropHandler);
+    dropCleanups.push(
+      () => document.removeEventListener("dragover", dragOverHandler),
+      () => document.removeEventListener("drop", dropHandler),
+      () => containerEl.removeEventListener("dragover", dragOverHandler),
+      () => containerEl.removeEventListener("drop", dropHandler),
+    );
 
     // Clipboard paste: if image present, save to temp then paste path
     containerEl.addEventListener("paste", async (e: ClipboardEvent) => {
@@ -402,6 +416,8 @@
     if (resizeObserver) resizeObserver.disconnect();
     window.removeEventListener("resize", doResize);
     try { OnFileDropOff(); } catch {}
+    for (const fn of dropCleanups) try { fn(); } catch {}
+    dropCleanups = [];
     if (term) term.dispose();
   });
 </script>
