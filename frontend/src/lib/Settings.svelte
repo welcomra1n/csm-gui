@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { AppVersion, CheckUpdate, ApplyUpdate, RestartApp } from "../../wailsjs/go/main/App.js";
+  import { AppVersion, CheckUpdate, ApplyUpdate, RestartApp, GetTrashInfo, EmptyTrash } from "../../wailsjs/go/main/App.js";
   import PermissionsPanel from "./PermissionsPanel.svelte";
 
   export let onClose: () => void;
@@ -15,9 +15,43 @@
   let updated = false;
   let log = "";
 
+  let trashCount = 0;
+  let trashBytes = 0;
+  let emptyingTrash = false;
+
+  function fmtBytes(n: number): string {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+    return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  }
+
+  async function loadTrash() {
+    try {
+      const info: any = await GetTrashInfo();
+      trashCount = info.count || 0;
+      trashBytes = info.bytes || 0;
+    } catch {}
+  }
+
+  async function doEmptyTrash() {
+    if (trashCount === 0) return;
+    if (!confirm(`Permanently delete ${trashCount} trashed session(s) (${fmtBytes(trashBytes)})? Cannot recover.`)) return;
+    emptyingTrash = true;
+    try {
+      const removed = await EmptyTrash();
+      log = `trash emptied: ${removed} file(s)`;
+      await loadTrash();
+    } catch (e: any) {
+      log = `empty trash failed: ${e?.message || e}`;
+    } finally {
+      emptyingTrash = false;
+    }
+  }
+
   async function load() {
     current = await AppVersion();
-    await check();
+    await Promise.all([check(), loadTrash()]);
   }
 
   async function check() {
@@ -118,6 +152,20 @@
     </div>
 
     <div class="section">
+      <div class="section-title">TRASH</div>
+      <div class="row">
+        <span class="key">trashed sessions</span>
+        <span class="val">{trashCount} files · {fmtBytes(trashBytes)}</span>
+      </div>
+      <div class="actions">
+        <button class="btn" on:click={loadTrash}>refresh</button>
+        <button class="btn primary" on:click={doEmptyTrash} disabled={emptyingTrash || trashCount === 0}>
+          {emptyingTrash ? "emptying…" : "empty trash ☠"}
+        </button>
+      </div>
+    </div>
+
+    <div class="section">
       <div class="section-title">PERMISSIONS</div>
       <PermissionsPanel dense />
     </div>
@@ -173,6 +221,14 @@
   .section {
     padding: 14px;
     font-size: var(--ui-fs-sm);
+    border-top: 1px solid var(--border);
+  }
+  .section:first-of-type { border-top: none; }
+  .section-title {
+    color: var(--fg-mute);
+    font-size: var(--ui-fs-xs);
+    letter-spacing: 1px;
+    margin-bottom: 8px;
   }
 
   .row {

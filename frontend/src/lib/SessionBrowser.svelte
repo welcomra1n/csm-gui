@@ -12,6 +12,8 @@
     ForkSession,
     DeleteSession,
     DeleteSessions,
+    PurgeSession,
+    PurgeSessions,
     SetSessionFolder,
     CreateFolder,
     RenameFolder,
@@ -92,6 +94,29 @@
     }
     const sessObjs = ids.map((id) => $sessions.find((s) => s.id === id)).filter(Boolean) as Session[];
     tagModal = { sessions: sessObjs, initial: intersection };
+  }
+
+  async function bulkPurge() {
+    if (selected.size === 0) return;
+    const ids = [...selected];
+    if (!confirm(`PERMANENTLY delete ${ids.length} session(s)? Cannot be recovered.`)) return;
+    statusText.set(`purging ${ids.length}…`);
+    startProgress();
+    const t0 = Date.now();
+    try {
+      const removed = await PurgeSessions(ids);
+      const idSet = new Set(ids);
+      tabs.update((arr) => arr.filter((t) => !t.sessionId || !idSet.has(t.sessionId)));
+      sessions.update((arr) => arr.filter((s) => !idSet.has(s.id)));
+      const dt = ((Date.now() - t0) / 1000).toFixed(1);
+      statusText.set(`purged ${removed}/${ids.length} in ${dt}s`);
+    } catch (e: any) {
+      statusText.set(`fail: ${e?.message || e}`);
+    } finally {
+      endProgress();
+      clearSelection();
+    }
+    await refresh();
   }
 
   async function bulkDelete() {
@@ -427,7 +452,8 @@
       { label: s.pinned ? "unpin" : "pin", action: () => togglePin(s), key: "P" },
       { label: "edit tags", action: () => (tagModal = { sessions: [s], initial: s.tags || [] }), key: "T" },
       { label: "fork (clone session)", action: () => forkSession(s) },
-      { label: "delete", action: () => deleteSession(s), danger: true, key: "Del" },
+      { label: "delete (to trash)", action: () => deleteSession(s), danger: true, key: "Del" },
+      { label: "permanently delete ☠", action: () => purgeSession(s), danger: true },
     ];
     if (groupSize > 1) {
       items.push({
@@ -467,6 +493,23 @@
     try {
       await DeleteSession(s.id);
       statusText.set(`deleted: ${s.alias || s.projectName}`);
+      const tab = $tabs.find((t) => t.sessionId === s.id);
+      if (tab) tabs.update((arr) => arr.filter((t) => t.id !== tab.id));
+      sessions.update((arr) => arr.filter((x) => x.id !== s.id));
+      await refresh();
+    } catch (e: any) {
+      statusText.set(`fail: ${e?.message || e}`);
+    } finally {
+      endProgress();
+    }
+  }
+
+  async function purgeSession(s: Session) {
+    if (!confirm(`PERMANENTLY delete "${s.alias || s.projectName}"? Cannot be recovered.`)) return;
+    startProgress();
+    try {
+      await PurgeSession(s.id);
+      statusText.set(`purged: ${s.alias || s.projectName}`);
       const tab = $tabs.find((t) => t.sessionId === s.id);
       if (tab) tabs.update((arr) => arr.filter((t) => t.id !== tab.id));
       sessions.update((arr) => arr.filter((x) => x.id !== s.id));
@@ -797,7 +840,8 @@
     <div class="selection-bar">
       <span>{selected.size} selected</span>
       <button on:click={bulkTag} title="tag selected">🏷</button>
-      <button on:click={bulkDelete} title="delete selected" class="danger">🗑</button>
+      <button on:click={bulkDelete} title="trash selected (recoverable)" class="danger">🗑</button>
+      <button on:click={bulkPurge} title="permanently delete (no recovery)" class="danger">☠</button>
       <button on:click={clearSelection} title="clear">✕</button>
     </div>
   {/if}

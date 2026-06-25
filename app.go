@@ -314,6 +314,131 @@ func (a *App) RenameAlias(id string, alias string) error {
 	return saveAliases(aliases)
 }
 
+// PurgeSession permanently removes a session's JSONL from disk.
+// Unlike DeleteSession this skips the trash dir — the file is gone.
+// Also wipes any trash copy with the same id and metadata entries.
+func (a *App) PurgeSession(id string) error {
+	src := a.GetSession(id)
+	if src != nil && src.SessionFile != "" {
+		_ = os.Remove(src.SessionFile)
+	}
+	// Wipe trash copies if present (DeleteSession having previously moved it)
+	trash := trashDir()
+	_ = os.Remove(filepath.Join(trash, id+".jsonl"))
+	_ = os.Remove(filepath.Join(trash, id+".jsonl.meta"))
+	// Clean metadata refs
+	meta := loadMetadata()
+	if meta.SessionTags != nil { delete(meta.SessionTags, id) }
+	if meta.SessionFolders != nil { delete(meta.SessionFolders, id) }
+	if meta.Recaps != nil { delete(meta.Recaps, id) }
+	saveMetadata(meta)
+	// Pins / aliases
+	pins := loadPins(); delete(pins, id); savePins(pins)
+	aliases := loadAliases(); delete(aliases, id); saveAliases(aliases)
+	return nil
+}
+
+// PurgeSessions parallel bulk-removes many sessions. Returns count removed.
+func (a *App) PurgeSessions(ids []string) (int, error) {
+	if len(ids) == 0 { return 0, nil }
+	wanted := map[string]bool{}
+	for _, id := range ids { wanted[id] = true }
+	all := discoverSessionsFast()
+	var matched []*Session
+	for _, s := range all {
+		if wanted[s.ID] { matched = append(matched, s) }
+	}
+
+	const workers = 8
+	jobs := make(chan *Session, len(matched))
+	var wg sync.WaitGroup
+	var removed int64
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for s := range jobs {
+				if s.SessionFile != "" {
+					if err := os.Remove(s.SessionFile); err == nil {
+						atomic.AddInt64(&removed, 1)
+					}
+				}
+				trash := trashDir()
+				_ = os.Remove(filepath.Join(trash, s.ID+".jsonl"))
+				_ = os.Remove(filepath.Join(trash, s.ID+".jsonl.meta"))
+			}
+		}()
+	}
+	for _, s := range matched { jobs <- s }
+	close(jobs)
+	wg.Wait()
+
+	// Also handle ids that may only be in trash, not in active listing
+	for _, id := range ids {
+		trash := trashDir()
+		_ = os.Remove(filepath.Join(trash, id+".jsonl"))
+		_ = os.Remove(filepath.Join(trash, id+".jsonl.meta"))
+	}
+
+	// Clean metadata for all ids
+	meta := loadMetadata()
+	for _, id := range ids {
+		if meta.SessionTags != nil { delete(meta.SessionTags, id) }
+		if meta.SessionFolders != nil { delete(meta.SessionFolders, id) }
+		if meta.Recaps != nil { delete(meta.Recaps, id) }
+	}
+	saveMetadata(meta)
+	pins := loadPins()
+	for _, id := range ids { delete(pins, id) }
+	savePins(pins)
+	aliases := loadAliases()
+	for _, id := range ids { delete(aliases, id) }
+	saveAliases(aliases)
+
+	return int(removed), nil
+}
+
+// TrashInfo returns current trash dir state for UI display.
+type TrashInfo struct {
+	Count int   `json:"count"`
+	Bytes int64 `json:"bytes"`
+}
+
+func (a *App) GetTrashInfo() TrashInfo {
+	info := TrashInfo{}
+	entries, err := os.ReadDir(trashDir())
+	if err != nil {
+		return info
+	}
+	for _, e := range entries {
+		if e.IsDir() { continue }
+		if !strings.HasSuffix(e.Name(), ".jsonl") { continue }
+		info.Count++
+		if fi, err := e.Info(); err == nil {
+			info.Bytes += fi.Size()
+		}
+	}
+	return info
+}
+
+// EmptyTrash permanently removes all files inside the trash dir.
+// Returns the number of jsonl files removed.
+func (a *App) EmptyTrash() (int, error) {
+	dir := trashDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, e := range entries {
+		path := filepath.Join(dir, e.Name())
+		if err := os.Remove(path); err == nil && strings.HasSuffix(e.Name(), ".jsonl") {
+			removed++
+		}
+	}
+	return removed, nil
+}
+
 // DeleteSession moves a session's JSONL file to the trash directory.
 // ForkSession duplicates a session's JSONL with a fresh UUID so the user
 // can branch from the same conversation context without overwriting the
