@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
+	"unicode/utf8"
 
 	gopty "github.com/aymanbagabas/go-pty"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -18,6 +20,16 @@ type ptySession struct {
 	pty  gopty.Pty
 	cmd  *gopty.Cmd
 	done chan struct{}
+
+	// Korean jamo coalescer state.
+	// macOS IMEs hand us conjoining Hangul jamo (U+1100..U+11FF) one
+	// rune per WritePty call. NFC over a single jamo is a no-op, so
+	// without batching across calls the PTY receives detached jamo
+	// and the TUI renders them split. We buffer trailing jamo bytes
+	// briefly and flush them composed.
+	jamoMu    sync.Mutex
+	jamoBuf   []byte
+	jamoTimer *time.Timer
 }
 
 type PtyManager struct {
@@ -154,14 +166,70 @@ func (a *App) ptyWaitLoop(s *ptySession) {
 	wruntime.EventsEmit(a.ctx, "pty:exit:"+s.id)
 }
 
+// jamo coalesce window. Long enough to catch IME pacing between
+// successive conjoining-jamo keystrokes (macOS Korean IME spaces them
+// 5–20 ms apart), short enough that the typing latency stays unnoticed.
+const jamoFlushMS = 35
+
+// isHangulJamo reports whether r is a conjoining Hangul jamo
+// (U+1100..U+11FF) or one of the extended jamo ranges (Jamo Extended-A
+// U+A960..U+A97F, Extended-B U+D7B0..U+D7FF). These are the runes that
+// participate in Hangul syllable composition under NFC.
+func isHangulJamo(r rune) bool {
+	switch {
+	case r >= 0x1100 && r <= 0x11FF:
+		return true
+	case r >= 0xA960 && r <= 0xA97F:
+		return true
+	case r >= 0xD7B0 && r <= 0xD7FF:
+		return true
+	}
+	return false
+}
+
+// splitTrailingJamo returns (head, tail) where tail is the maximal
+// suffix of b composed only of Hangul jamo runes. The tail is the part
+// we hold back, expecting more jamo runes to follow so the whole run
+// can NFC-compose into syllables.
+func splitTrailingJamo(b []byte) (head, tail []byte) {
+	i := len(b)
+	for i > 0 {
+		r, size := utf8.DecodeLastRune(b[:i])
+		if r == utf8.RuneError || !isHangulJamo(r) {
+			break
+		}
+		i -= size
+	}
+	return b[:i], b[i:]
+}
+
+// flushJamoLocked writes any buffered jamo bytes (NFC-composed) to the
+// PTY. Caller must hold s.jamoMu.
+func (s *ptySession) flushJamoLocked() {
+	if len(s.jamoBuf) == 0 {
+		return
+	}
+	out := nfc(string(s.jamoBuf))
+	s.jamoBuf = s.jamoBuf[:0]
+	if s.jamoTimer != nil {
+		s.jamoTimer.Stop()
+		s.jamoTimer = nil
+	}
+	io.WriteString(s.pty, out)
+}
+
 // WritePty sends input bytes to the PTY's stdin.
 //
-// NFC-normalises the payload before forwarding. macOS IMEs (and the WKWebView
-// textarea path) occasionally emit decomposed Hangul jamo (NFD); shells and
-// TUIs like Claude render those as detached jamo ("ㅎㅏㄴ" instead of "한").
-// Normalising here is the single chokepoint for every input path — paste,
-// IME compositionend, programmatic enqueueWrite — so the fix can't be
-// bypassed by a caller forgetting to normalise on the frontend.
+// Two-stage normalisation:
+//  1. NFC-normalise the incoming payload so any decomposed Hangul that
+//     already arrived as a single chunk (paste, compositionend) is
+//     composed before reaching the shell.
+//  2. Coalesce trailing conjoining jamo across consecutive calls. macOS
+//     IMEs hand us one jamo per keystroke; NFC over a single rune is a
+//     no-op, so without buffering the TUI sees and renders detached
+//     jamo. We hold any jamo tail for jamoFlushMS, append future jamo
+//     calls to it, and flush composed once a non-jamo byte arrives or
+//     the timer fires.
 func (a *App) WritePty(tabId string, data string) error {
 	a.ptyMgr.mu.Lock()
 	s, ok := a.ptyMgr.sessions[tabId]
@@ -169,8 +237,45 @@ func (a *App) WritePty(tabId string, data string) error {
 	if !ok {
 		return fmt.Errorf("tab %s not found", tabId)
 	}
-	_, err := io.WriteString(s.pty, nfc(data))
-	return err
+
+	payload := []byte(nfc(data))
+	head, tail := splitTrailingJamo(payload)
+
+	s.jamoMu.Lock()
+	defer s.jamoMu.Unlock()
+
+	// Any non-jamo prefix flushes the buffered jamo first, then writes
+	// the prefix immediately so control chars / Enter / ESC sequences
+	// keep their original latency.
+	if len(head) > 0 {
+		if len(s.jamoBuf) > 0 {
+			out := nfc(string(s.jamoBuf))
+			s.jamoBuf = s.jamoBuf[:0]
+			if s.jamoTimer != nil {
+				s.jamoTimer.Stop()
+				s.jamoTimer = nil
+			}
+			if _, err := io.WriteString(s.pty, out); err != nil {
+				return err
+			}
+		}
+		if _, err := s.pty.Write(head); err != nil {
+			return err
+		}
+	}
+
+	if len(tail) > 0 {
+		s.jamoBuf = append(s.jamoBuf, tail...)
+		if s.jamoTimer != nil {
+			s.jamoTimer.Stop()
+		}
+		s.jamoTimer = time.AfterFunc(jamoFlushMS*time.Millisecond, func() {
+			s.jamoMu.Lock()
+			defer s.jamoMu.Unlock()
+			s.flushJamoLocked()
+		})
+	}
+	return nil
 }
 
 // ResizePty informs the PTY about the new viewport size.
@@ -195,6 +300,9 @@ func (a *App) KillPty(tabId string) error {
 	if !ok {
 		return nil
 	}
+	s.jamoMu.Lock()
+	s.flushJamoLocked()
+	s.jamoMu.Unlock()
 	if s.cmd != nil && s.cmd.Process != nil {
 		return s.cmd.Process.Kill()
 	}

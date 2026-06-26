@@ -67,6 +67,7 @@ type Metadata struct {
 	Recaps          map[string]string   `json:"recaps"`
 	Prefs           map[string]bool     `json:"prefs"`
 	OpenTabs        []SavedTab          `json:"open_tabs"`
+	LastSeenVersion string              `json:"last_seen_version,omitempty"`
 }
 
 type SavedTab struct {

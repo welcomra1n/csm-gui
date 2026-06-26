@@ -8,12 +8,18 @@
   import PermissionsModal from "./lib/PermissionsModal.svelte";
   import CommandPalette from "./lib/CommandPalette.svelte";
   import type { PaletteCommand } from "./lib/CommandPalette.svelte";
-  import { AppVersion } from "../wailsjs/go/main/App.js";
+  import { AppVersion, WhatsNew, AcknowledgeVersion } from "../wailsjs/go/main/App.js";
 
   let settingsOpen = false;
   let permsOpen = false;
   let paletteOpen = false;
   let updateToast: string | null = null;
+  let whatsNew: { version: string; body: string; url: string } | null = null;
+
+  async function dismissWhatsNew() {
+    whatsNew = null;
+    try { await AcknowledgeVersion(); } catch {}
+  }
 
   function buildPaletteCommands(): PaletteCommand[] {
     const list: PaletteCommand[] = [
@@ -93,17 +99,17 @@
     window.addEventListener("keydown", trackAlt);
     window.addEventListener("keyup", trackAlt);
     window.addEventListener("blur", blurClearAlt);
-    // Check if just updated
+    // Check if just updated → fetch release notes for this build
     try {
-      const current = await AppVersion();
-      const pending = localStorage.getItem("csm-pending-version");
-      const lastSeen = localStorage.getItem("csm-last-version");
-      if (pending && current === pending && lastSeen !== current) {
-        updateToast = `v${current} 업데이트 완료`;
-        localStorage.removeItem("csm-pending-version");
+      const info = await WhatsNew();
+      if (info && info.body) {
+        whatsNew = info;
+      } else if (info && info.version) {
+        // Body unavailable (offline / API failure) — fall back to toast.
+        updateToast = `v${info.version} 업데이트 완료`;
         setTimeout(() => { updateToast = null; }, 5000);
+        try { await AcknowledgeVersion(); } catch {}
       }
-      localStorage.setItem("csm-last-version", current);
       // First-launch permissions intro
       if (!localStorage.getItem("csm-perms-seen")) {
         permsOpen = true;
@@ -270,6 +276,27 @@
   <div class="toast" on:click={() => (updateToast = null)}>
     <span class="toast-icon">✓</span>
     <span>{updateToast}</span>
+  </div>
+{/if}
+
+{#if whatsNew}
+  <div class="whatsnew-backdrop" on:click|self={dismissWhatsNew}>
+    <div class="whatsnew" role="dialog" aria-modal="true">
+      <header>
+        <div class="title">
+          <span class="badge">UPDATED</span>
+          <span>v{whatsNew.version} · 변경 사항</span>
+        </div>
+        <button class="close" on:click={dismissWhatsNew} title="닫기">×</button>
+      </header>
+      <div class="body">
+        <pre>{whatsNew.body}</pre>
+      </div>
+      <footer>
+        <a class="link" href={whatsNew.url} target="_blank" rel="noopener">GitHub 릴리스 ↗</a>
+        <button class="ok" on:click={dismissWhatsNew}>확인</button>
+      </footer>
+    </div>
   </div>
 {/if}
 
@@ -588,6 +615,99 @@
     0%   { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
   }
+
+  .whatsnew-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  .whatsnew {
+    background: #0a0a0a;
+    border: 1px solid var(--accent-claude, #00ff66);
+    border-radius: 6px;
+    box-shadow: 0 0 24px rgba(0, 255, 102, 0.18);
+    width: min(640px, 92vw);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    color: var(--fg, #cccccc);
+    font-family: "D2Coding", Menlo, monospace;
+  }
+  .whatsnew header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border, #222);
+  }
+  .whatsnew .title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--fg);
+  }
+  .whatsnew .badge {
+    background: var(--accent-claude, #00ff66);
+    color: #000;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 2px;
+    letter-spacing: 1px;
+  }
+  .whatsnew .close {
+    background: none;
+    border: 0;
+    color: var(--fg-mute);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+  }
+  .whatsnew .close:hover { color: var(--accent-action, #ff4d8b); }
+  .whatsnew .body {
+    overflow-y: auto;
+    padding: 12px 14px;
+    flex: 1;
+  }
+  .whatsnew .body pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: inherit;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--fg);
+  }
+  .whatsnew footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border, #222);
+  }
+  .whatsnew .link {
+    color: var(--fg-mute);
+    font-size: 11px;
+    text-decoration: none;
+  }
+  .whatsnew .link:hover { color: var(--accent-claude); }
+  .whatsnew .ok {
+    background: var(--accent-claude, #00ff66);
+    color: #000;
+    border: 0;
+    padding: 6px 16px;
+    border-radius: 3px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .whatsnew .ok:hover { box-shadow: 0 0 8px rgba(0, 255, 102, 0.5); }
 
   .toast {
     position: fixed;

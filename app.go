@@ -689,6 +689,59 @@ func (a *App) AppVersion() string {
 	return a.version
 }
 
+// WhatsNewInfo carries the release notes payload shown after an update.
+// Body is the raw GitHub release markdown; the frontend renders it.
+type WhatsNewInfo struct {
+	Version string `json:"version"`
+	Body    string `json:"body"`
+	URL     string `json:"url"`
+}
+
+// WhatsNew returns release notes for the current build the first time it
+// runs after an upgrade. Returns nil once the user has acknowledged the
+// notes (Acknowledge) or if the build version matches what we last saw.
+// "dev" builds never trigger a notes payload.
+func (a *App) WhatsNew() (*WhatsNewInfo, error) {
+	current := strings.TrimPrefix(a.AppVersion(), "v")
+	if current == "" || current == "dev" {
+		return nil, nil
+	}
+	meta := loadMetadata()
+	if meta.LastSeenVersion == current {
+		return nil, nil
+	}
+	resp, err := httpGet("https://api.github.com/repos/welcomra1n/csm-gui/releases/tags/v" + current)
+	if err != nil {
+		return nil, fmt.Errorf("network: %w", err)
+	}
+	var raw struct {
+		TagName string `json:"tag_name"`
+		HTMLURL string `json:"html_url"`
+		Body    string `json:"body"`
+	}
+	if err := jsonUnmarshal(resp, &raw); err != nil {
+		return nil, fmt.Errorf("parse: %w", err)
+	}
+	if raw.TagName == "" {
+		return nil, nil
+	}
+	return &WhatsNewInfo{
+		Version: current,
+		Body:    raw.Body,
+		URL:     raw.HTMLURL,
+	}, nil
+}
+
+// AcknowledgeVersion marks the current build version as seen so future
+// startups skip the release-notes prompt.
+func (a *App) AcknowledgeVersion() error {
+	current := strings.TrimPrefix(a.AppVersion(), "v")
+	meta := loadMetadata()
+	meta.LastSeenVersion = current
+	saveMetadata(meta)
+	return nil
+}
+
 // UpdateInfo describes the latest release available upstream.
 type UpdateInfo struct {
 	Current     string `json:"current"`
