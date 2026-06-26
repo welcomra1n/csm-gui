@@ -13,22 +13,19 @@ func nfc(s string) string {
 	return norm.NFC.String(s)
 }
 
-// composeJamo aggressively folds a Hangul jamo run into precomposed
-// syllables. Use only on strings that contain ONLY Hangul jamo runes
-// (validated upstream by isHangulJamo), because NFKC has other effects
-// (fullwidth → halfwidth, ligature breaking, etc.) that we do not want
-// for general terminal input.
+// composeJamo turns a Hangul jamo run into precomposed Hangul Syllables.
 //
-// Why NFKC and not NFC: macOS WKWebView sometimes hands us Hangul
-// Compatibility Jamo (U+3131..U+318E) on keystrokes — these are the
-// "display jamo" in the Hangul keyboard layout, not the conjoining
-// jamo. NFC alone cannot combine them. NFKC's compatibility
-// decomposition step rewrites them to conjoining jamo (U+1100..U+11FF),
-// and the canonical composition step then folds those into precomposed
-// syllables in the Hangul Syllables block.
+// NFKC is NOT sufficient here. NFKC decomposes Compatibility Jamo to the
+// conjoining LEAD position, so a trailing consonant like the ㄴ in 한
+// becomes a stray lead jamo: NFKC("ㅎㅏㄴ") → "하ᄂ" instead of "한".
+// composeHangulJamo runs a position-aware state machine that picks the
+// trailing vs leading interpretation based on the next-character context.
 func composeJamo(s string) string {
 	if s == "" {
 		return s
 	}
-	return norm.NFKC.String(s)
+	// Run the position-aware composer first, then NFC to collapse any
+	// remaining conjoining LVT triples (e.g. when the input already
+	// contained NFD conjoining jamo).
+	return norm.NFC.String(composeHangulJamo(s))
 }
