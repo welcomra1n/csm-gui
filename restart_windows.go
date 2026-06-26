@@ -2,10 +2,6 @@
 
 package main
 
-// spawnMacUpdater is a no-op on Windows — kept so app.go can reference
-// it unconditionally.
-func spawnMacUpdater(pid int) {}
-
 import (
 	"fmt"
 	"os"
@@ -14,6 +10,10 @@ import (
 	"strings"
 	"syscall"
 )
+
+// spawnMacUpdater is a no-op on Windows — kept so app.go can reference
+// it unconditionally.
+func spawnMacUpdater(pid int) {}
 
 // spawnWindowsRelauncher uses a VBScript via wscript.exe (Windows-subsystem,
 // no console) to wait 2 seconds then launch csm. wscript.exe survives parent
