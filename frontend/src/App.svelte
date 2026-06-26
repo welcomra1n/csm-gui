@@ -25,8 +25,8 @@
     const list: PaletteCommand[] = [
       { id: "settings", label: "설정 열기", hint: "Cmd+,", action: () => (settingsOpen = true) },
       { id: "perms", label: "권한 모달 열기", action: () => (permsOpen = true) },
-      { id: "toggle-left", label: "좌측 사이드바 토글", action: () => leftOpen.update((v) => !v) },
-      { id: "toggle-right", label: "우측 사이드바 토글", action: () => rightOpen.update((v) => !v) },
+      { id: "toggle-left", label: "좌측 사이드바 토글", hint: "Cmd+.", action: () => leftOpen.update((v) => !v) },
+      { id: "toggle-right", label: "우측 사이드바 토글", hint: "Cmd+/", action: () => rightOpen.update((v) => !v) },
       { id: "toggle-preview", label: "프리뷰 토글", action: () => previewOpen.update((v) => !v) },
       { id: "zoom-in", label: "글자 키우기", hint: "Cmd++", action: () => fontSize.update((v) => Math.min(v + 1, 32)) },
       { id: "zoom-out", label: "글자 줄이기", hint: "Cmd+-", action: () => fontSize.update((v) => Math.max(v - 1, 8)) },
@@ -78,6 +78,12 @@
     } else if (mod && e.key === ",") {
       e.preventDefault();
       settingsOpen = true;
+    } else if (mod && e.key === ".") {
+      e.preventDefault();
+      leftOpen.update((v) => !v);
+    } else if (mod && e.key === "/") {
+      e.preventDefault();
+      rightOpen.update((v) => !v);
     } else if (mod && e.shiftKey && (e.key === "p" || e.key === "P")) {
       e.preventDefault();
       paletteOpen = true;
