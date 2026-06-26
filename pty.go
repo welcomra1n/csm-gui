@@ -166,10 +166,11 @@ func (a *App) ptyWaitLoop(s *ptySession) {
 	wruntime.EventsEmit(a.ctx, "pty:exit:"+s.id)
 }
 
-// jamo coalesce window. Long enough to catch IME pacing between
-// successive conjoining-jamo keystrokes (macOS Korean IME spaces them
-// 5–20 ms apart), short enough that the typing latency stays unnoticed.
-const jamoFlushMS = 35
+// jamo coalesce window. Sized to cover the worst plausible inter-keystroke
+// gap while a user is mid-composition (slow typing → ~200 ms between jamo).
+// Only Hangul jamo bytes are delayed; ASCII / Enter / control chars
+// bypass the buffer and write immediately.
+const jamoFlushMS = 250
 
 // isHangulJamo reports whether r is a conjoining Hangul jamo
 // (U+1100..U+11FF) or one of the extended jamo ranges (Jamo Extended-A

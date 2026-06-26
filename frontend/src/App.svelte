@@ -51,6 +51,11 @@
   import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth, progressActive, previewOpen, rightOpen, leftOpen, altHeld } from "./lib/store";
 
   function handleKey(e: KeyboardEvent) {
+    if (whatsNew && e.key === "Escape") {
+      e.preventDefault();
+      dismissWhatsNew();
+      return;
+    }
     const mod = e.metaKey || e.ctrlKey;
     if (mod && (e.key === "w" || e.key === "W")) {
       const id = $activeTabId;

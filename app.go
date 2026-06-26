@@ -1044,13 +1044,10 @@ func (a *App) ProcessDroppedPath(srcPath string) (string, error) {
 	if srcPath == "" {
 		return "", fmt.Errorf("empty path")
 	}
-	info, err := os.Stat(srcPath)
-	if err != nil {
-		return srcPath, nil
-	}
-	if info.IsDir() {
-		return srcPath, nil
-	}
+	// Decide by extension BEFORE touching the filesystem. macOS triggers a
+	// TCC prompt the first time the app reads from Downloads / Desktop /
+	// Documents, so we want to avoid even an os.Stat for non-image drops
+	// (which always pass through as plain paths anyway).
 	ext := strings.ToLower(filepath.Ext(srcPath))
 	isImage := false
 	switch ext {
@@ -1058,6 +1055,13 @@ func (a *App) ProcessDroppedPath(srcPath string) (string, error) {
 		isImage = true
 	}
 	if !isImage {
+		return srcPath, nil
+	}
+	info, err := os.Stat(srcPath)
+	if err != nil {
+		return srcPath, nil
+	}
+	if info.IsDir() {
 		return srcPath, nil
 	}
 	data, err := os.ReadFile(srcPath)
