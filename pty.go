@@ -172,10 +172,14 @@ func (a *App) ptyWaitLoop(s *ptySession) {
 // bypass the buffer and write immediately.
 const jamoFlushMS = 250
 
-// isHangulJamo reports whether r is a conjoining Hangul jamo
-// (U+1100..U+11FF) or one of the extended jamo ranges (Jamo Extended-A
-// U+A960..U+A97F, Extended-B U+D7B0..U+D7FF). These are the runes that
-// participate in Hangul syllable composition under NFC.
+// isHangulJamo reports whether r is a Hangul jamo that should be
+// coalesced and composed. Includes:
+//   - Conjoining Jamo (U+1100..U+11FF) — composed by NFC
+//   - Jamo Extended-A / -B (U+A960..U+A97F, U+D7B0..U+D7FF)
+//   - Compatibility Jamo (U+3131..U+318E) — NOT composable by NFC, but
+//     decomposable by NFKC into conjoining jamo which then NFC-compose.
+//     macOS WKWebView sometimes hands us this range when forwarding
+//     keystrokes from the system Korean IME via the textarea path.
 func isHangulJamo(r rune) bool {
 	switch {
 	case r >= 0x1100 && r <= 0x11FF:
@@ -183,6 +187,8 @@ func isHangulJamo(r rune) bool {
 	case r >= 0xA960 && r <= 0xA97F:
 		return true
 	case r >= 0xD7B0 && r <= 0xD7FF:
+		return true
+	case r >= 0x3131 && r <= 0x318E:
 		return true
 	}
 	return false
@@ -204,13 +210,16 @@ func splitTrailingJamo(b []byte) (head, tail []byte) {
 	return b[:i], b[i:]
 }
 
-// flushJamoLocked writes any buffered jamo bytes (NFC-composed) to the
-// PTY. Caller must hold s.jamoMu.
+// flushJamoLocked writes any buffered jamo bytes to the PTY. The buffer
+// only ever contains Hangul jamo runes, so NFKC is safe here — its
+// compatibility decomposition is what converts Compatibility Jamo
+// (U+3131..U+318E) into the conjoining jamo NFC can then compose into
+// precomposed Hangul Syllables. Caller must hold s.jamoMu.
 func (s *ptySession) flushJamoLocked() {
 	if len(s.jamoBuf) == 0 {
 		return
 	}
-	out := nfc(string(s.jamoBuf))
+	out := composeJamo(string(s.jamoBuf))
 	s.jamoBuf = s.jamoBuf[:0]
 	if s.jamoTimer != nil {
 		s.jamoTimer.Stop()
@@ -250,7 +259,7 @@ func (a *App) WritePty(tabId string, data string) error {
 	// keep their original latency.
 	if len(head) > 0 {
 		if len(s.jamoBuf) > 0 {
-			out := nfc(string(s.jamoBuf))
+			out := composeJamo(string(s.jamoBuf))
 			s.jamoBuf = s.jamoBuf[:0]
 			if s.jamoTimer != nil {
 				s.jamoTimer.Stop()
