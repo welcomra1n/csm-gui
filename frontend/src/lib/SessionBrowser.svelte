@@ -23,6 +23,7 @@
     ListFolders,
   } from "../../wailsjs/go/main/App.js";
   import ProviderIcon from "./ProviderIcon.svelte";
+  import doneSoundUrl from "../assets/done.mp3";
   import ContextMenu from "./ContextMenu.svelte";
   import PromptModal from "./PromptModal.svelte";
   import TagModal from "./TagModal.svelte";
@@ -226,23 +227,12 @@
   }
 
   let prevRunningAgents = new Set<string>();
-  let audioCtx: AudioContext | null = null;
 
   function playDing() {
     try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const t = audioCtx.currentTime;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.frequency.setValueAtTime(880, t);
-      osc.frequency.exponentialRampToValueAtTime(1320, t + 0.08);
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.15, t + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-      osc.start(t);
-      osc.stop(t + 0.35);
+      const a = new Audio(doneSoundUrl);
+      a.volume = 0.8;
+      void a.play();
     } catch (e) {
       // ignore
     }

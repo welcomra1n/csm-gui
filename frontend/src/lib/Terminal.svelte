@@ -3,10 +3,14 @@
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { WebLinksAddon } from "@xterm/addon-web-links";
+  import { SearchAddon } from "@xterm/addon-search";
+  import { WebglAddon } from "@xterm/addon-webgl";
+  import { ImageAddon } from "@xterm/addon-image";
   import "@xterm/xterm/css/xterm.css";
   import { EventsOn, EventsOff, OnFileDrop, WindowShow } from "../../wailsjs/runtime/runtime.js";
   import { WritePty, ResizePty, SaveClipboardImage, CopyImageToClipboard } from "../../wailsjs/go/main/App.js";
-  import { fontSize, activeTabId, tabs, leftWidth, rightWidth } from "./store";
+  import { fontSize, activeTabId, tabs, leftWidth, rightWidth, statusText } from "./store";
+  import doneSoundUrl from "../assets/done.mp3";
 
   export let tabId: string;
 
@@ -17,7 +21,7 @@
     });
     // Re-register Wails OnFileDrop so this active tab owns the callback.
     if (wailsDropCallback) {
-      try { OnFileDrop(wailsDropCallback, true); } catch {}
+      try { OnFileDrop(wailsDropCallback, false); } catch {}
     }
   }
 
@@ -30,6 +34,60 @@
   let containerEl: HTMLDivElement;
   let term: Terminal;
   let fit: FitAddon;
+  let searchAddon: SearchAddon | null = null;
+  let searchOpen = false;
+  let searchValue = "";
+  let searchInputEl: HTMLInputElement;
+  let ctxMenu: { x: number; y: number } | null = null;
+
+  function findNext(reverse = false) {
+    if (!searchAddon || !searchValue) return;
+    const opts = { caseSensitive: false, wholeWord: false, regex: false, decorations: { matchOverviewRuler: "#ffd60a", activeMatchColorOverviewRuler: "#ffd60a" } };
+    if (reverse) searchAddon.findPrevious(searchValue, opts as any);
+    else searchAddon.findNext(searchValue, opts as any);
+  }
+  function closeSearch() {
+    searchOpen = false;
+    try { searchAddon?.clearDecorations(); } catch {}
+    term?.focus();
+  }
+  async function ctxCopy() {
+    const sel = term?.getSelection();
+    if (sel) { try { await navigator.clipboard.writeText(sel); } catch {} }
+    ctxMenu = null;
+  }
+  async function ctxPaste() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) enqueueWriteExternal(text);
+    } catch {}
+    ctxMenu = null;
+  }
+  function ctxClear() { try { term?.clear(); } catch {} ; ctxMenu = null; }
+  function ctxFind() { ctxMenu = null; searchOpen = true; setTimeout(() => searchInputEl?.focus(), 0); }
+  async function ctxCopyLine() {
+    if (!term || !ctxMenu) { ctxMenu = null; return; }
+    // Synthesize triple-click at the menu open coordinate to make xterm
+    // select the line under the right-click, then read the selection.
+    const x = ctxMenu.x, y = ctxMenu.y;
+    ctxMenu = null;
+    const target = containerEl;
+    const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, button: 0 } as MouseEventInit;
+    for (let i = 1; i <= 3; i++) {
+      target.dispatchEvent(new MouseEvent("mousedown", { ...opts, detail: i }));
+      target.dispatchEvent(new MouseEvent("mouseup", { ...opts, detail: i }));
+      target.dispatchEvent(new MouseEvent("click", { ...opts, detail: i }));
+    }
+    setTimeout(async () => {
+      const sel = term.getSelection();
+      if (sel && sel.trim()) {
+        try { await navigator.clipboard.writeText(sel); statusText.set(`copied: ${sel.length} chars`); } catch {}
+      }
+    }, 30);
+  }
+
+  // Bridge to internal enqueueWrite (defined in onMount closure).
+  let enqueueWriteExternal: (s: string) => void = () => {};
   let resizeObserver: ResizeObserver | null = null;
   let outputUnsubscribe: (() => void) | null = null;
   let exitUnsubscribe: (() => void) | null = null;
@@ -109,7 +167,33 @@
 
     fit = new FitAddon();
     term.loadAddon(fit);
-    term.loadAddon(new WebLinksAddon());
+    term.loadAddon(new WebLinksAddon((event, uri) => {
+      if (event.ctrlKey || event.metaKey) {
+        try { window.open(uri, "_blank"); } catch {}
+      }
+    }, {
+      hover: (_ev: MouseEvent, uri: string) => {
+        statusText.set(`↗ ${uri}  (⌘+click to open)`);
+      },
+      leave: () => {
+        // restore status text after hover ends
+        statusText.set("");
+      },
+    } as any));
+    searchAddon = new SearchAddon();
+    term.loadAddon(searchAddon);
+
+    // Inline image rendering — supports iTerm2 OSC 1337 and Sixel.
+    try {
+      const imageAddon = new ImageAddon({
+        sixelSupport: true,
+        iipSupport: true,
+        iipSizeLimit: 64 * 1024 * 1024,
+      });
+      term.loadAddon(imageAddon);
+    } catch (e) {
+      console.warn("image addon:", e);
+    }
 
     // Ensure Tab key always goes to PTY. On Windows only, intercept Ctrl+V
     // because xterm.js sends it as literal ^V; on macOS we let xterm/WKWebView
@@ -146,6 +230,24 @@
     });
 
     term.open(containerEl);
+
+    // WebGL renderer for GPU-accelerated drawing. Falls back silently on
+    // hardware that does not support it (older Intel macs without WebGL2).
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch (e) {
+      console.warn("webgl addon:", e);
+    }
+
+    // Auto-copy selected text to OS clipboard
+    term.onSelectionChange(() => {
+      const sel = term.getSelection();
+      if (sel) {
+        try { navigator.clipboard.writeText(sel); } catch {}
+      }
+    });
     // Wait for layout + fonts then resize repeatedly
     const fontsReady = (document as any).fonts?.ready || Promise.resolve();
     fontsReady.then(() => {
@@ -189,6 +291,7 @@
         requestAnimationFrame(flushWrite);
       }
     }
+    enqueueWriteExternal = enqueueWrite;
 
     const helper = containerEl.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
     if (helper) {
@@ -223,7 +326,59 @@
       enqueueWrite(data);
     });
 
-    containerEl.addEventListener("click", () => term.focus());
+    containerEl.addEventListener("click", () => { if (!ctxMenu) term.focus(); });
+
+    // Triple-click → auto copy the selected line. xterm already selects the
+    // whole line on a 3rd click; we just read the selection right after and
+    // push it to the OS clipboard so the user does not need a follow-up ⌘C.
+    let clickCount = 0;
+    let clickTimer: ReturnType<typeof setTimeout> | null = null;
+    containerEl.addEventListener("mousedown", () => {
+      clickCount++;
+      if (clickTimer) clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => { clickCount = 0; }, 500);
+    });
+    containerEl.addEventListener("mouseup", () => {
+      if (clickCount >= 3) {
+        clickCount = 0;
+        setTimeout(() => {
+          const sel = term?.getSelection();
+          if (sel && sel.trim()) {
+            navigator.clipboard.writeText(sel).then(() => {
+              statusText.set(`copied: ${sel.length} chars`);
+            }).catch(() => {});
+          }
+        }, 0);
+      }
+    });
+
+    // Right-click context menu (copy / paste / clear / find).
+    containerEl.addEventListener("contextmenu", (e: MouseEvent) => {
+      e.preventDefault();
+      ctxMenu = { x: e.clientX, y: e.clientY };
+    });
+    // Shift+Insert = paste (Linux/X11 convention)
+    document.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.shiftKey && e.key === "Insert" && $activeTabId === tabId) {
+        e.preventDefault();
+        navigator.clipboard.readText().then((text) => {
+          if (text) enqueueWrite(text);
+        }).catch(() => {});
+      }
+      // Cmd+F / Ctrl+F → toggle search (xterm scrollback search)
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && (e.key === "f" || e.key === "F") && $activeTabId === tabId) {
+        e.preventDefault();
+        e.stopPropagation();
+        searchOpen = true;
+        setTimeout(() => searchInputEl?.focus(), 0);
+      }
+      if (searchOpen && e.key === "Escape") {
+        searchOpen = false;
+        try { searchAddon?.clearDecorations(); } catch {}
+        term.focus();
+      }
+    });
 
     // File drop.
     // HTML5 drop handler fires synchronously when the user releases the
@@ -278,6 +433,7 @@
     // (see reactive block below). Active-tab guard inside the callback
     // is belt-and-suspenders.
     wailsDropCallback = async (_x: number, _y: number, paths: string[]) => {
+      console.debug("[csm] wails drop", tabId, paths);
       if ($activeTabId !== tabId) return;
       if (!paths || !paths.length) return;
       await new Promise((r) => setTimeout(r, 80));
@@ -294,7 +450,7 @@
       }
       deliverDropped(processed);
     };
-    OnFileDrop(wailsDropCallback, true);
+    OnFileDrop(wailsDropCallback, false);
 
     // Attach to document so the listener catches drops anywhere in the
     // window — xterm's helper textarea sometimes intercepts events before
@@ -402,6 +558,11 @@
         const isActive = $activeTabId === tabId && document.hasFocus();
         if (isActive) return; // user already watching
         try {
+          const a = new Audio(doneSoundUrl);
+          a.volume = 0.8;
+          void a.play();
+        } catch {}
+        try {
           if ("Notification" in window && Notification.permission === "granted") {
             const n = new Notification("작업 완료", {
               body: tab.title || "세션 응답 끝",
@@ -484,7 +645,37 @@
   });
 </script>
 
-<div class="term-container" bind:this={containerEl}></div>
+<div class="term-wrap-inner">
+  <div class="term-container" bind:this={containerEl}></div>
+  {#if searchOpen}
+    <div class="search-bar">
+      <input
+        bind:this={searchInputEl}
+        bind:value={searchValue}
+        on:keydown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); findNext(e.shiftKey); }
+          else if (e.key === "Escape") { e.preventDefault(); closeSearch(); }
+        }}
+        placeholder="find in scrollback…"
+        autocomplete="off"
+      />
+      <button on:click={() => findNext(true)} title="previous (Shift+Enter)">▲</button>
+      <button on:click={() => findNext(false)} title="next (Enter)">▼</button>
+      <button on:click={closeSearch} title="close (Esc)">×</button>
+    </div>
+  {/if}
+  {#if ctxMenu}
+    <div class="ctx-overlay" on:click={() => (ctxMenu = null)} on:contextmenu|preventDefault={() => (ctxMenu = null)}>
+      <div class="ctx" style="left: {ctxMenu.x}px; top: {ctxMenu.y}px;" on:click|stopPropagation>
+        <button on:click={ctxCopy}>copy <span class="hint">⌘C</span></button>
+        <button on:click={ctxCopyLine}>copy line <span class="hint">3-click</span></button>
+        <button on:click={ctxPaste}>paste <span class="hint">⌘V</span></button>
+        <button on:click={ctxFind}>find <span class="hint">⌘F</span></button>
+        <button on:click={ctxClear}>clear</button>
+      </div>
+    </div>
+  {/if}
+</div>
 
 <style>
   .term-container {
@@ -503,4 +694,75 @@
   :global(.xterm-viewport) {
     overflow-y: auto !important;
   }
+
+  .term-wrap-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+
+  .search-bar {
+    position: absolute;
+    top: 6px;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    background: var(--bg-elev);
+    border: 1px solid var(--fg-mute);
+    border-radius: 3px;
+    z-index: 50;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  }
+  .search-bar input {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 2px 6px;
+    font-size: var(--ui-fs-xs);
+    min-width: 200px;
+  }
+  .search-bar input:focus { outline: none; border-color: var(--fg-mute); }
+  .search-bar button {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--fg-mute);
+    padding: 2px 6px;
+    font-size: var(--ui-fs-xs);
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  .search-bar button:hover { color: var(--fg); border-color: var(--fg); }
+
+  .ctx-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+  }
+  .ctx {
+    position: absolute;
+    background: var(--bg-elev);
+    border: 1px solid var(--fg-mute);
+    border-radius: 3px;
+    padding: 4px 0;
+    min-width: 140px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
+  }
+  .ctx button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--fg);
+    padding: 5px 12px;
+    font-size: var(--ui-fs-sm);
+    cursor: pointer;
+    text-align: left;
+  }
+  .ctx button:hover { background: var(--bg-hover); }
+  .ctx .hint { color: var(--fg-mute); font-size: var(--ui-fs-xs); margin-left: 16px; }
 </style>

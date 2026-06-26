@@ -6,11 +6,42 @@
   import Preview from "./lib/Preview.svelte";
   import Settings from "./lib/Settings.svelte";
   import PermissionsModal from "./lib/PermissionsModal.svelte";
+  import CommandPalette from "./lib/CommandPalette.svelte";
+  import type { PaletteCommand } from "./lib/CommandPalette.svelte";
   import { AppVersion } from "../wailsjs/go/main/App.js";
 
   let settingsOpen = false;
   let permsOpen = false;
+  let paletteOpen = false;
   let updateToast: string | null = null;
+
+  function buildPaletteCommands(): PaletteCommand[] {
+    const list: PaletteCommand[] = [
+      { id: "settings", label: "설정 열기", hint: "Cmd+,", action: () => (settingsOpen = true) },
+      { id: "perms", label: "권한 모달 열기", action: () => (permsOpen = true) },
+      { id: "toggle-left", label: "좌측 사이드바 토글", action: () => leftOpen.update((v) => !v) },
+      { id: "toggle-right", label: "우측 사이드바 토글", action: () => rightOpen.update((v) => !v) },
+      { id: "toggle-preview", label: "프리뷰 토글", action: () => previewOpen.update((v) => !v) },
+      { id: "zoom-in", label: "글자 키우기", hint: "Cmd++", action: () => fontSize.update((v) => Math.min(v + 1, 32)) },
+      { id: "zoom-out", label: "글자 줄이기", hint: "Cmd+-", action: () => fontSize.update((v) => Math.max(v - 1, 8)) },
+      { id: "zoom-reset", label: "글자 크기 리셋", hint: "Cmd+0", action: () => fontSize.set(13) },
+      { id: "close-tab", label: "현재 탭 닫기", hint: "Cmd+W", action: () => {
+        const id = $activeTabId; if (id) tabs.update((arr) => arr.filter((t) => t.id !== id));
+      }},
+      { id: "focus-search", label: "세션 검색창 포커스", hint: "Cmd+F", action: () => focusSearch.update((n) => n + 1) },
+    ];
+    // Add jump-to-tab commands
+    const sorted = [...$tabs].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+    sorted.forEach((t, i) => {
+      list.push({
+        id: `tab-${t.id}`,
+        label: `탭으로 이동: ${t.title}`,
+        hint: i < 9 ? `Alt+${i + 1}` : undefined,
+        action: () => activeTabId.set(t.id),
+      });
+    });
+    return list;
+  }
   import { tabs, activeTabId, statusText, fontSize, focusSearch, leftWidth, rightWidth, progressActive, previewOpen, rightOpen, leftOpen, altHeld } from "./lib/store";
 
   function handleKey(e: KeyboardEvent) {
@@ -36,6 +67,9 @@
     } else if (mod && e.key === ",") {
       e.preventDefault();
       settingsOpen = true;
+    } else if (mod && e.shiftKey && (e.key === "p" || e.key === "P")) {
+      e.preventDefault();
+      paletteOpen = true;
     } else if (e.altKey && !e.metaKey && !e.ctrlKey && /^[1-9]$/.test(e.key)) {
       // Alt+1..9 → jump to that tab in the visible sidebar order
       // (pinned first, then mount order — matches TabSidebar sort).
@@ -219,6 +253,10 @@
 
 {#if settingsOpen}
   <Settings onClose={() => (settingsOpen = false)} />
+{/if}
+
+{#if paletteOpen}
+  <CommandPalette commands={buildPaletteCommands()} onClose={() => (paletteOpen = false)} />
 {/if}
 
 {#if permsOpen}

@@ -326,8 +326,10 @@
     padding: 5px 10px;
     text-align: left;
     border-left: 2px solid transparent;
-    color: var(--fg-dim);
+    color: var(--fg-mute);
+    opacity: 0.55;
     font-size: var(--ui-fs);
+    transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
   }
 
   /* Visual count helper: extra gap after every 5th tab so it's easier
@@ -339,6 +341,7 @@
   .tab:hover {
     background: var(--bg-hover);
     color: var(--fg);
+    opacity: 0.85;
   }
 
   .tab.dragging {
@@ -348,8 +351,26 @@
   .tab.active {
     background: var(--bg-hover);
     color: var(--fg);
-    border-left-color: var(--fg);
-    box-shadow: inset 0 0 8px rgba(0, 255, 102, 0.05);
+    opacity: 1;
+    border-left-color: var(--accent-claude, var(--fg));
+    border-left-width: 3px;
+    padding-left: 9px;
+    box-shadow: inset 0 0 12px rgba(0, 255, 102, 0.12), inset 3px 0 0 var(--accent-claude, var(--fg));
+    font-weight: 600;
+  }
+
+  .tab.active .title {
+    color: var(--fg);
+    text-shadow: 0 0 6px rgba(0, 255, 102, 0.25);
+  }
+
+  .tab.active .num {
+    color: var(--fg);
+  }
+
+  .tab.active.codex {
+    border-left-color: var(--accent-codex);
+    box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.06), inset 3px 0 0 var(--accent-codex);
   }
 
   .num {

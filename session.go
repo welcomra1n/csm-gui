@@ -294,9 +294,9 @@ func loadSessionFast(path string) *Session {
 		return nil
 	}
 	dir := filepath.Base(filepath.Dir(path))
-	ppath := decodePath(dir)
+	ppath := nfc(decodePath(dir))
 	home, _ := os.UserHomeDir()
-	pname := lastSegment(ppath)
+	pname := nfc(lastSegment(ppath))
 	if ppath == home {
 		pname = "미분류"
 	}
@@ -330,7 +330,7 @@ func loadSessionDetail(sess *Session) {
 				CustomTitle string `json:"customTitle"`
 			}
 			if json.Unmarshal(sc.Bytes(), &ct) == nil && ct.CustomTitle != "" {
-				sess.Alias = ct.CustomTitle
+				sess.Alias = nfc(ct.CustomTitle)
 			}
 			continue
 		}
@@ -553,13 +553,13 @@ func loadCodexSession(entry codexIndexEntry) *Session {
 	}
 
 	if entry.ThreadName != "" {
-		sess.Alias = entry.ThreadName
+		sess.Alias = nfc(entry.ThreadName)
 		if len(sess.Alias) > 40 {
 			sess.Alias = sess.Alias[:37] + "..."
 		}
 	}
 	if sess.FirstUserMsg == "" && entry.ThreadName != "" {
-		sess.FirstUserMsg = entry.ThreadName
+		sess.FirstUserMsg = nfc(entry.ThreadName)
 	}
 
 	if sess.MessageCount == 0 {
@@ -733,7 +733,7 @@ func discoverSessionsFast() []*Session {
 			if strings.HasSuffix(f.Name(), ".jsonl") {
 				if s := loadSessionFast(filepath.Join(dir, f.Name())); s != nil {
 					if alias, ok := aliases[s.ID]; ok {
-						s.Alias = alias
+						s.Alias = nfc(alias)
 					}
 					out = append(out, s)
 				}
@@ -743,7 +743,7 @@ func discoverSessionsFast() []*Session {
 	codexSessions := discoverCodexSessions()
 	for _, cs := range codexSessions {
 		if alias, ok := aliases[cs.ID]; ok {
-			cs.Alias = alias
+			cs.Alias = nfc(alias)
 		}
 		out = append(out, cs)
 	}
