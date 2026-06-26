@@ -166,11 +166,13 @@ func (a *App) ptyWaitLoop(s *ptySession) {
 	wruntime.EventsEmit(a.ctx, "pty:exit:"+s.id)
 }
 
-// jamo coalesce window. Sized to cover the worst plausible inter-keystroke
-// gap while a user is mid-composition (slow typing → ~200 ms between jamo).
-// Only Hangul jamo bytes are delayed; ASCII / Enter / control chars
-// bypass the buffer and write immediately.
-const jamoFlushMS = 250
+// Idle window after which an in-progress Hangul syllable is flushed even
+// though more input *could* still extend it. Kept short so the user does
+// not feel typing latency — completed syllables are emitted instantly via
+// the streaming composer; this timer only applies to the single
+// trailing syllable that has not yet acquired enough jamo to be
+// unambiguous (e.g. an LV that might still take a T).
+const jamoFlushMS = 120
 
 // isHangulJamo reports whether r is a Hangul jamo that should be
 // coalesced and composed. Includes:
@@ -210,11 +212,11 @@ func splitTrailingJamo(b []byte) (head, tail []byte) {
 	return b[:i], b[i:]
 }
 
-// flushJamoLocked writes any buffered jamo bytes to the PTY. The buffer
-// only ever contains Hangul jamo runes, so NFKC is safe here — its
-// compatibility decomposition is what converts Compatibility Jamo
-// (U+3131..U+318E) into the conjoining jamo NFC can then compose into
-// precomposed Hangul Syllables. Caller must hold s.jamoMu.
+// flushJamoLocked drains every buffered jamo byte to the PTY,
+// composing whatever syllables it can. Use only on session close /
+// non-jamo arrival / timer expiry; for normal streaming flushes the
+// caller should use streamFlushLocked instead so that the in-progress
+// trailing syllable can stay buffered. Caller must hold s.jamoMu.
 func (s *ptySession) flushJamoLocked() {
 	if len(s.jamoBuf) == 0 {
 		return
@@ -226,6 +228,20 @@ func (s *ptySession) flushJamoLocked() {
 		s.jamoTimer = nil
 	}
 	io.WriteString(s.pty, out)
+}
+
+// streamFlushLocked emits every syllable that the streaming composer is
+// already certain about, keeping the trailing in-progress syllable in
+// the buffer for future input to extend. Caller must hold s.jamoMu.
+func (s *ptySession) streamFlushLocked() {
+	if len(s.jamoBuf) == 0 {
+		return
+	}
+	composed, pending := composeHangulJamoStreaming(string(s.jamoBuf))
+	if composed != "" {
+		io.WriteString(s.pty, composed)
+	}
+	s.jamoBuf = append(s.jamoBuf[:0], []byte(pending)...)
 }
 
 // WritePty sends input bytes to the PTY's stdin.
@@ -276,14 +292,21 @@ func (a *App) WritePty(tabId string, data string) error {
 
 	if len(tail) > 0 {
 		s.jamoBuf = append(s.jamoBuf, tail...)
+		// Emit every syllable the streaming composer can prove is
+		// complete; only the trailing in-progress syllable stays.
+		s.streamFlushLocked()
 		if s.jamoTimer != nil {
 			s.jamoTimer.Stop()
 		}
-		s.jamoTimer = time.AfterFunc(jamoFlushMS*time.Millisecond, func() {
-			s.jamoMu.Lock()
-			defer s.jamoMu.Unlock()
-			s.flushJamoLocked()
-		})
+		// Safety net: if no more input arrives, flush whatever pending
+		// half-syllable is sitting in the buffer after the idle window.
+		if len(s.jamoBuf) > 0 {
+			s.jamoTimer = time.AfterFunc(jamoFlushMS*time.Millisecond, func() {
+				s.jamoMu.Lock()
+				defer s.jamoMu.Unlock()
+				s.flushJamoLocked()
+			})
+		}
 	}
 	return nil
 }

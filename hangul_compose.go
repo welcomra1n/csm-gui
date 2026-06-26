@@ -164,6 +164,123 @@ var trailToLeadTable = map[rune]rune{
 	0x11C2: 0x1112,
 }
 
+// composeHangulJamoStreaming runs the composer but returns the result
+// split into two halves:
+//
+//	composed — everything we are CERTAIN about. Safe to send to the PTY
+//	           right now because no further input can change it.
+//	pending  — the trailing slice of input runes (verbatim) that belong
+//	           to a syllable the user might still extend (e.g. an LV
+//	           waiting to take a T, or a lone L waiting for its V).
+//
+// The caller is expected to keep `pending` in its own buffer and
+// re-append future input to it before calling again. This lets the PTY
+// receive completed syllables with near-zero latency while still
+// holding the in-progress syllable long enough to compose correctly.
+func composeHangulJamoStreaming(s string) (composed string, pending string) {
+	if s == "" {
+		return "", ""
+	}
+	runes := []rune(s)
+	// Find the start index of the trailing in-progress syllable, if any.
+	// A syllable is "in progress" iff at end-of-input it is missing the
+	// pieces it could still acquire: a lone L (could take V), an LV
+	// (could take T), or an LVT whose T can still combine with a future
+	// compound trail consonant.
+	//
+	// Scan once with the same state machine logic, but only to track
+	// where each new syllable began.
+	syllStart := -1
+	var L, V, T rune
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		info := jamoLookup(r)
+		if info.kind == jNone {
+			L, V, T = 0, 0, 0
+			syllStart = -1
+			continue
+		}
+		switch info.kind {
+		case jVowel:
+			if L == 0 {
+				L, V, T = 0, 0, 0
+				syllStart = -1
+				continue
+			}
+			if V == 0 {
+				V = info.vowel
+				continue
+			}
+			if T != 0 {
+				if _, ok := trailToLeadTable[T]; ok {
+					T = 0
+					L = 0 // popped trail becomes new L (handled next emit)
+					V = info.vowel
+					syllStart = i - 1
+					continue
+				}
+			}
+			L = 0
+			V = info.vowel
+			syllStart = i
+		case jLeadOnly:
+			L = info.lead
+			V, T = 0, 0
+			syllStart = i
+		case jLeadOrTrail:
+			if L == 0 {
+				L = info.lead
+				syllStart = i
+				continue
+			}
+			if V == 0 {
+				L = info.lead
+				syllStart = i
+				continue
+			}
+			nextIsVowel := false
+			if i+1 < len(runes) {
+				ni := jamoLookup(runes[i+1])
+				if ni.kind == jVowel {
+					nextIsVowel = true
+				}
+			}
+			if !nextIsVowel && info.trail != 0 {
+				if T == 0 {
+					T = info.trail
+					continue
+				}
+				if _, ok := trailCompoundTable[[2]rune{T, info.trail}]; ok {
+					T = info.trail
+					continue
+				}
+				L = info.lead
+				V, T = 0, 0
+				syllStart = i
+				continue
+			}
+			L = info.lead
+			V, T = 0, 0
+			syllStart = i
+		case jTrailOnly:
+			if V != 0 && T == 0 {
+				T = info.trail
+				continue
+			}
+			L, V, T = 0, 0, 0
+			syllStart = -1
+		}
+	}
+
+	// Anything from syllStart onward is the live syllable.
+	if syllStart < 0 {
+		return composeHangulJamo(s), ""
+	}
+	composedPart := composeHangulJamo(string(runes[:syllStart]))
+	pendingPart := string(runes[syllStart:])
+	return composedPart, pendingPart
+}
+
 // composeHangulJamo turns a string of Hangul jamo (compat OR conjoining,
 // freely mixed) into properly composed Hangul Syllables wherever the
 // L+V[+T] pattern allows it. Non-jamo runes pass through untouched.
