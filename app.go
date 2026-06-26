@@ -727,9 +727,60 @@ func (a *App) WhatsNew() (*WhatsNewInfo, error) {
 	}
 	return &WhatsNewInfo{
 		Version: current,
-		Body:    raw.Body,
+		Body:    summariseReleaseBody(raw.Body),
 		URL:     raw.HTMLURL,
 	}, nil
+}
+
+// summariseReleaseBody distils a GitHub release body down to its
+// bullet-list bones. Drops prose paragraphs, "Root cause:" preambles,
+// trailing verification notes, and Markdown decoration. Keeps at most
+// the first six bullets, each clipped to ~120 chars. If no bullets are
+// present at all, falls back to the first non-empty line so the modal
+// still has *something* to show.
+func summariseReleaseBody(body string) string {
+	body = strings.ReplaceAll(body, "\r\n", "\n")
+	lines := strings.Split(body, "\n")
+
+	bullets := make([]string, 0, 6)
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		if t == "" {
+			continue
+		}
+		// Only collect explicit list items.
+		if !(strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ") || strings.HasPrefix(t, "• ")) {
+			continue
+		}
+		t = strings.TrimLeft(t, "-*• \t")
+		// Strip simple inline code backticks for readability.
+		t = strings.ReplaceAll(t, "`", "")
+		if len(t) > 120 {
+			t = strings.TrimSpace(t[:117]) + "…"
+		}
+		bullets = append(bullets, "• "+t)
+		if len(bullets) >= 6 {
+			break
+		}
+	}
+
+	if len(bullets) > 0 {
+		return strings.Join(bullets, "\n")
+	}
+
+	// No bullets — return the first meaningful line, clipped.
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		if t == "" {
+			continue
+		}
+		t = strings.ReplaceAll(t, "`", "")
+		if len(t) > 160 {
+			t = strings.TrimSpace(t[:157]) + "…"
+		}
+		return "• " + t
+	}
+	return ""
 }
 
 // AcknowledgeVersion marks the current build version as seen so future

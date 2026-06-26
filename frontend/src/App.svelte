@@ -636,8 +636,8 @@
     border: 1px solid var(--accent-claude, #00ff66);
     border-radius: 6px;
     box-shadow: 0 0 24px rgba(0, 255, 102, 0.18);
-    width: min(640px, 92vw);
-    max-height: 80vh;
+    width: min(420px, 92vw);
+    max-height: 60vh;
     display: flex;
     flex-direction: column;
     color: var(--fg, #cccccc);
