@@ -2,6 +2,10 @@
 
 package main
 
+// spawnMacUpdater is a no-op on Windows — kept so app.go can reference
+// it unconditionally.
+func spawnMacUpdater(pid int) {}
+
 import (
 	"fmt"
 	"os"
