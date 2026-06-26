@@ -76,14 +76,22 @@ func (a *App) ListSessions() []*Session {
 	meta := loadMetadata()
 	for _, s := range sessions {
 		if folder, ok := meta.SessionFolders[s.ID]; ok {
-			s.Folder = folder
+			s.Folder = nfc(folder)
 		}
 		if tags, ok := meta.SessionTags[s.ID]; ok {
-			s.Tags = tags
+			normTags := make([]string, len(tags))
+			for i, t := range tags {
+				normTags[i] = nfc(t)
+			}
+			s.Tags = normTags
 		}
 		if recap, ok := meta.Recaps[s.ID]; ok {
-			s.Recap = recap
+			s.Recap = nfc(recap)
 		}
+		s.Alias = nfc(s.Alias)
+		s.ProjectName = nfc(s.ProjectName)
+		s.ProjectDir = nfc(s.ProjectDir)
+		s.FirstUserMsg = nfc(s.FirstUserMsg)
 	}
 	return sessions
 }
@@ -1040,7 +1048,12 @@ func (a *App) SaveOpenTabs(tabs []SavedTab) error {
 // LoadOpenTabs returns the previously saved tabs.
 func (a *App) LoadOpenTabs() []SavedTab {
 	meta := loadMetadata()
-	return meta.OpenTabs
+	out := make([]SavedTab, len(meta.OpenTabs))
+	for i, t := range meta.OpenTabs {
+		t.Title = nfc(t.Title)
+		out[i] = t
+	}
+	return out
 }
 
 // GetMetadata returns the raw metadata object.
@@ -1054,7 +1067,7 @@ func (a *App) GenerateRecap(id string, force bool) (string, error) {
 	meta := loadMetadata()
 	if !force {
 		if r, ok := meta.Recaps[id]; ok && r != "" {
-			return r, nil
+			return nfc(r), nil
 		}
 	}
 	s := a.GetSession(id)

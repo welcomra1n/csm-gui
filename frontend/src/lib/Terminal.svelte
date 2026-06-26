@@ -285,6 +285,10 @@
       WritePty(tabId, out).catch((e) => console.warn("write pty:", e));
     }
     function enqueueWrite(s: string) {
+      // NFC-normalise here as well as in Go WritePty: catches Korean jamo
+      // that comes from IME compositionend / paste paths before any caller
+      // can route around the Go boundary.
+      try { s = s.normalize("NFC"); } catch {}
       writeBuf += s;
       if (!writeScheduled) {
         writeScheduled = true;

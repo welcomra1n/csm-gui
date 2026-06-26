@@ -155,6 +155,13 @@ func (a *App) ptyWaitLoop(s *ptySession) {
 }
 
 // WritePty sends input bytes to the PTY's stdin.
+//
+// NFC-normalises the payload before forwarding. macOS IMEs (and the WKWebView
+// textarea path) occasionally emit decomposed Hangul jamo (NFD); shells and
+// TUIs like Claude render those as detached jamo ("ㅎㅏㄴ" instead of "한").
+// Normalising here is the single chokepoint for every input path — paste,
+// IME compositionend, programmatic enqueueWrite — so the fix can't be
+// bypassed by a caller forgetting to normalise on the frontend.
 func (a *App) WritePty(tabId string, data string) error {
 	a.ptyMgr.mu.Lock()
 	s, ok := a.ptyMgr.sessions[tabId]
@@ -162,7 +169,7 @@ func (a *App) WritePty(tabId string, data string) error {
 	if !ok {
 		return fmt.Errorf("tab %s not found", tabId)
 	}
-	_, err := io.WriteString(s.pty, data)
+	_, err := io.WriteString(s.pty, nfc(data))
 	return err
 }
 
