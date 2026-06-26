@@ -832,21 +832,18 @@ func (a *App) CheckUpdate() (*UpdateInfo, error) {
 func (a *App) ApplyUpdate() (string, error) {
 	if runtime.GOOS == "darwin" {
 		augmentPATH()
-		brew, err := exec.LookPath("brew")
-		if err != nil {
-			brew = resolveViaShell("brew")
-			if brew == "" {
-				return "", fmt.Errorf("brew not found in PATH")
-			}
-		}
-		// Refresh tap then upgrade (force handles edge cases)
-		c1 := exec.Command(brew, "update")
-		hideConsole(c1)
-		out1, _ := c1.CombinedOutput()
-		c2 := exec.Command(brew, "reinstall", "--cask", "csm-gui")
-		hideConsole(c2)
-		out2, err := c2.CombinedOutput()
-		return string(out1) + "\n" + string(out2), err
+		// brew refuses to replace files that belong to a running app
+		// bundle, and running it synchronously here means brew + the
+		// .app it is trying to overwrite are the same process tree —
+		// when csm dies mid-upgrade brew aborts and the cask is left
+		// in a half-installed state. Spawn a detached shell that waits
+		// for our PID to exit, runs the upgrade, then relaunches.
+		spawnMacUpdater(os.Getpid())
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			wruntime.Quit(a.ctx)
+		}()
+		return "updater scheduled — app will close, brew will upgrade in the background, csm will relaunch", nil
 	}
 	if runtime.GOOS == "windows" {
 		// Refresh bucket list first (can run while csm.exe is alive).
