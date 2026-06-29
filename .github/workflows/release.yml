@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin/universal
+            artifact: csm-gui-darwin
+            ext: ""
+          - os: windows-latest
+            platform: windows/amd64
+            artifact: csm-gui-windows-amd64
+            ext: ".exe"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Install frontend deps
+        working-directory: legacy-wails/frontend
+        run: npm install
+
+      - name: Compute version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Import macOS signing certificate
+        if: matrix.os == 'macos-latest' && env.CSM_MAC_SIGNING_CERT_P12 != ''
+        env:
+          CSM_MAC_SIGNING_CERT_P12: ${{ secrets.CSM_MAC_SIGNING_CERT_P12 }}
+          CSM_MAC_SIGNING_CERT_PWD: ${{ secrets.CSM_MAC_SIGNING_CERT_PWD }}
+        run: |
+          KEYCHAIN=build.keychain
+          KEY_PWD="$(openssl rand -base64 24)"
+          security create-keychain -p "$KEY_PWD" "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "$KEY_PWD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          echo "$CSM_MAC_SIGNING_CERT_P12" | base64 --decode > /tmp/cert.p12
+          security import /tmp/cert.p12 -k "$KEYCHAIN" -P "$CSM_MAC_SIGNING_CERT_PWD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEY_PWD" "$KEYCHAIN"
+          rm /tmp/cert.p12
+
+      - name: Build (macOS)
+        if: matrix.os == 'macos-latest'
+        working-directory: legacy-wails
+        env:
+          CGO_ENABLED: 1
+        run: |
+          wails build -platform darwin/universal -clean -ldflags "-X main.version=${{ steps.ver.outputs.version }}"
+
+      - name: Codesign (macOS)
+        if: matrix.os == 'macos-latest'
+        working-directory: legacy-wails
+        run: |
+          APP=build/bin/csm.app
+          if security find-identity -v -p codesigning build.keychain 2>/dev/null | grep -q "CSM Self-Signed"; then
+            IDENTITY="CSM Self-Signed (welcomra1n)"
+            echo "Signing with $IDENTITY"
+            # Sign every nested executable / dylib first, then the
+            # bundle. --force replaces the wails adhoc signature; --deep
+            # walks the bundle so the cgo .dylibs inside Frameworks/
+            # are covered too.
+            codesign --force --deep --options runtime --timestamp=none \
+              --sign "$IDENTITY" "$APP"
+          else
+            echo "No signing cert in keychain — leaving adhoc signature."
+          fi
+          codesign -dvvv "$APP" || true
+
+      - name: Package (macOS)
+        if: matrix.os == 'macos-latest'
+        working-directory: legacy-wails
+        run: |
+          cd build/bin
+          ditto -c -k --sequesterRsrc --keepParent csm.app csm-gui-darwin.zip
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: legacy-wails
+        run: |
+          wails build -platform windows/amd64 -clean -ldflags "-X main.version=${{ steps.ver.outputs.version }}"
+          cd build/bin
+          Compress-Archive -Path csm.exe -DestinationPath csm-gui-windows-amd64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: legacy-wails/build/bin/*.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+      - name: Trigger Scoop bucket update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+        run: |
+          gh workflow run auto-update.yml --repo welcomra1n/scoop-bucket 2>&1 || \
+            echo "Could not trigger remote workflow; scoop-bucket will pick up the release within 6h via its own cron."

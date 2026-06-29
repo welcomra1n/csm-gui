@@ -272,71 +272,39 @@
     });
     term.focus();
 
-    // IME composition tracking. macOS WKWebView fires both
-    // compositionend (with the final composed syllable) AND a delayed
-    // textarea input event that xterm forwards via onData. Without
-    // dedup the PTY receives both → double input.
-    //
-    // Strategy: do NOT suppress onData while composing (that was
-    // eating vowels when WKWebView dropped a compositionend mid-burst
-    // under fast typing). Instead, always emit; on each
-    // compositionend remember the composed string for 400 ms and drop
-    // the next onData burst that exactly matches it.
-    let lastComposed = "";
-    let lastComposedAt = 0;
+    // IME composition handling. v0.8.0 style: while composing, drop
+    // onData; on compositionend send the composed syllable directly.
+    // Every "improvement" piled on top of this between v0.9.0 and
+    // v0.9.48 (suppression timers, dedup windows, jamo coalescers,
+    // DEL preview, microtask batching) actually broke Korean input
+    // that worked perfectly here. Keep it boring.
+    let composing = false;
+    let composeBuffer = "";
 
-    // Immediate, micro-task batched PTY write. The previous RAF-based
-    // batch added a 16 ms wait per keystroke, which on top of Wails IPC
-    // (~5–15 ms) made Korean live-preview typing feel sluggish compared
-    // with native terminals like Ghostty. queueMicrotask collapses
-    // multiple enqueueWrite calls inside the same synchronous task
-    // (e.g. composition burst that fires several onData events
-    // back-to-back) into one WritePty round-trip without waiting a
-    // full frame.
-    let writeBuf = "";
-    let writeScheduled = false;
-    function flushWrite() {
-      writeScheduled = false;
-      if (!writeBuf) return;
-      const out = writeBuf;
-      writeBuf = "";
-      WritePty(tabId, out).catch((e) => console.warn("write pty:", e));
-    }
     function enqueueWrite(s: string) {
-      try { s = s.normalize("NFC"); } catch {}
-      writeBuf += s;
-      if (!writeScheduled) {
-        writeScheduled = true;
-        queueMicrotask(flushWrite);
-      }
+      WritePty(tabId, s).catch((e) => console.warn("write pty:", e));
     }
     enqueueWriteExternal = enqueueWrite;
 
     const helper = containerEl.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
     if (helper) {
+      helper.addEventListener("compositionstart", () => {
+        composing = true;
+        composeBuffer = "";
+      });
+      helper.addEventListener("compositionupdate", (e: CompositionEvent) => {
+        composeBuffer = e.data || "";
+      });
       helper.addEventListener("compositionend", (e: CompositionEvent) => {
-        const out = e.data || "";
-        try { helper.value = ""; } catch {}
-        if (out) {
-          lastComposed = out;
-          lastComposedAt = Date.now();
-        }
+        composing = false;
+        const out = e.data || composeBuffer;
+        composeBuffer = "";
+        if (out) enqueueWrite(out);
       });
     }
 
-    // Coalesce keystrokes that land in the same animation frame into a
-    // single WritePty call. Each Wails RPC carries ~5–15ms IPC overhead
-    // on Windows WebView2; batching collapses fast-typing / paste /
-    // autocomplete bursts into one round-trip without visible latency.
     term.onData((data) => {
-      // Drop the textarea echo that arrives ~immediately after a
-      // compositionend. We do NOT block onData during composition
-      // itself any more — that was losing keystrokes when
-      // WKWebView dropped a compositionend mid-burst.
-      if (lastComposed && data === lastComposed && Date.now() - lastComposedAt < 400) {
-        lastComposed = "";
-        return;
-      }
+      if (composing) return;
       enqueueWrite(data);
     });
 
