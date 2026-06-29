@@ -1081,6 +1081,14 @@ func (a *App) CopyImageToClipboard(path string) error {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch runtime.GOOS {
 	case "darwin":
+		// Prefer the in-process NSPasteboard path (no AppleScript host →
+		// no Automation/Photos TCC prompts on paste). Fall back to
+		// osascript if cgo wasn't built in or the native call failed
+		// (rare — basically only if the image format isn't loadable by
+		// NSImage).
+		if err := writeImageToClipboardNative(path); err == nil {
+			return nil
+		}
 		var oscType string
 		switch ext {
 		case ".png":
@@ -1092,7 +1100,6 @@ func (a *App) CopyImageToClipboard(path string) error {
 		case ".tiff", ".tif":
 			oscType = "TIFF picture"
 		default:
-			// fall back to PNG read; works for most common image formats
 			oscType = "«class PNGf»"
 		}
 		script := fmt.Sprintf(`set the clipboard to (read (POSIX file %q) as %s)`, path, oscType)

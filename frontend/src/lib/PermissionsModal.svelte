@@ -1,9 +1,14 @@
 <script lang="ts">
   import PermissionsPanel from "./PermissionsPanel.svelte";
+  import { OpenURL } from "../../wailsjs/go/main/App.js";
   export let onClose: () => void;
 
   function handleKey(e: KeyboardEvent) {
     if (e.key === "Escape") onClose();
+  }
+
+  function openPrivacyRoot() {
+    OpenURL("x-apple.systempreferences:com.apple.preference.security?Privacy").catch(() => {});
   }
 </script>
 
@@ -17,7 +22,15 @@
     </div>
 
     <div class="intro">
-      csm-gui가 사용하는 권한들. 필수는 끌 수 없음. OS 표시는 macOS Privacy & Security 설정에서 별도 관리.
+      <p>macOS 권한 팝업이 잦은 이유:</p>
+      <ul>
+        <li>csm.app이 <strong>코드 서명되지 않아</strong> 매 업데이트마다 다른 앱처럼 보임 → TCC가 모든 권한을 다시 묻음.</li>
+        <li>v0.9.42부터 안정적인 서명 적용. 이후 업데이트는 권한 기억함.</li>
+        <li>지금은 한번 다 허용하면 다음 업데이트부터 조용해짐.</li>
+      </ul>
+      <button class="open-settings" on:click={openPrivacyRoot}>
+        시스템 설정 → 개인정보 보호 열기
+      </button>
     </div>
 
     <div class="body">
@@ -86,6 +99,21 @@
     line-height: 1.5;
     border-bottom: 1px solid var(--border);
   }
+  .intro p { margin: 0 0 6px 0; }
+  .intro ul { margin: 0 0 10px 18px; padding: 0; }
+  .intro li { margin: 2px 0; }
+  .intro strong { color: var(--accent-action); }
+  .open-settings {
+    background: var(--accent-folder, #4a9eff);
+    color: #000;
+    border: 0;
+    padding: 6px 12px;
+    border-radius: 3px;
+    font-size: var(--ui-fs-sm);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .open-settings:hover { box-shadow: 0 0 8px rgba(74, 158, 255, 0.5); }
 
   .body {
     padding: 12px 16px;

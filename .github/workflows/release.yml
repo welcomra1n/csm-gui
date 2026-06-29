@@ -56,10 +56,55 @@ jobs:
             echo "version=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Import macOS signing certificate
+        if: matrix.os == 'macos-latest' && env.CSM_MAC_SIGNING_CERT_P12 != ''
+        env:
+          CSM_MAC_SIGNING_CERT_P12: ${{ secrets.CSM_MAC_SIGNING_CERT_P12 }}
+          CSM_MAC_SIGNING_CERT_PWD: ${{ secrets.CSM_MAC_SIGNING_CERT_PWD }}
+        run: |
+          KEYCHAIN=build.keychain
+          KEY_PWD="$(openssl rand -base64 24)"
+          security create-keychain -p "$KEY_PWD" "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "$KEY_PWD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          echo "$CSM_MAC_SIGNING_CERT_P12" | base64 --decode > /tmp/cert.p12
+          security import /tmp/cert.p12 -k "$KEYCHAIN" -P "$CSM_MAC_SIGNING_CERT_PWD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEY_PWD" "$KEYCHAIN"
+          rm /tmp/cert.p12
+
       - name: Build (macOS)
         if: matrix.os == 'macos-latest'
+        env:
+          # Stable bundle id keeps TCC consent attached to the same
+          # principal across builds; the signing identity below makes
+          # the code requirement stable too.
+          CGO_ENABLED: 1
         run: |
           wails build -platform darwin/universal -clean -ldflags "-X main.version=${{ steps.ver.outputs.version }}"
+
+      - name: Codesign (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          APP=build/bin/csm.app
+          if security find-identity -v -p codesigning build.keychain 2>/dev/null | grep -q "CSM Self-Signed"; then
+            IDENTITY="CSM Self-Signed (welcomra1n)"
+            echo "Signing with $IDENTITY"
+            # Sign every nested executable / dylib first, then the
+            # bundle. --force replaces the wails adhoc signature; --deep
+            # walks the bundle so the cgo .dylibs inside Frameworks/
+            # are covered too.
+            codesign --force --deep --options runtime --timestamp=none \
+              --sign "$IDENTITY" "$APP"
+          else
+            echo "No signing cert in keychain — leaving adhoc signature."
+          fi
+          codesign -dvvv "$APP" || true
+
+      - name: Package (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
           cd build/bin
           ditto -c -k --sequesterRsrc --keepParent csm.app csm-gui-darwin.zip
 
