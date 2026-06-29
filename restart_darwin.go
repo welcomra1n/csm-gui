@@ -57,9 +57,21 @@ if ! "$BREW" upgrade --cask csm-gui; then
   "$BREW" reinstall --cask csm-gui || true
 fi
 
-# Give Finder a beat, then relaunch.
+# Give Finder a beat, then relaunch. /Applications/csm.app is the canonical
+# install path written by the homebrew cask; fall back to a Caskroom glob in
+# case Homebrew has not yet relinked the bundle into /Applications.
 sleep 0.5
-open -a /Applications/csm.app || open -a csm
+if [ -d /Applications/csm.app ]; then
+  open /Applications/csm.app
+else
+  cask_app=$(ls -td /opt/homebrew/Caskroom/csm-gui/*/csm.app 2>/dev/null | head -1)
+  if [ -z "$cask_app" ]; then
+    cask_app=$(ls -td /usr/local/Caskroom/csm-gui/*/csm.app 2>/dev/null | head -1)
+  fi
+  if [ -n "$cask_app" ]; then
+    open "$cask_app"
+  fi
+fi
 `, logPath, pid)
 
 	if err := os.WriteFile(tmp, []byte(script), 0755); err != nil {

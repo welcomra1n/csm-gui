@@ -156,6 +156,15 @@ func (a *App) ptyWaitLoop(s *ptySession) {
 	if s.cmd != nil {
 		s.cmd.Wait()
 	}
+	// Cancel any pending jamo flush timer so it can't fire against a
+	// closed pty after this session is torn down.
+	s.jamoMu.Lock()
+	if s.jamoTimer != nil {
+		s.jamoTimer.Stop()
+		s.jamoTimer = nil
+	}
+	s.jamoBuf = s.jamoBuf[:0]
+	s.jamoMu.Unlock()
 	a.ptyMgr.mu.Lock()
 	delete(a.ptyMgr.sessions, s.id)
 	a.ptyMgr.mu.Unlock()

@@ -883,8 +883,12 @@ func (a *App) RestartApp() error {
 		if appPath == "" {
 			return fmt.Errorf("could not locate csm.app")
 		}
+		// Detach via setsid + fork so the relaunch survives our Quit.
+		// Use exec.Command with positional args (not sh -c) so a path
+		// containing shell metacharacters can't get interpreted.
 		go func() {
-			exec.Command("sh", "-c", "sleep 1 && open '"+appPath+"' &").Start()
+			c := exec.Command("/bin/sh", "-c", "sleep 1; open \"$1\"", "sh", appPath)
+			_ = c.Start()
 			time.Sleep(200 * time.Millisecond)
 			wruntime.Quit(a.ctx)
 		}()
