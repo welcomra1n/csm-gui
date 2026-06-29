@@ -272,18 +272,18 @@
     });
     term.focus();
 
-    // IME composition handling.
-    // Korean/Japanese composition fires compositionend AND a delayed
-    // textarea input echo that xterm forwards via onData. We dedupe by
-    // remembering the last composed string (for 350ms) and silently
-    // dropping any onData burst that exactly matches it. We do NOT use a
-    // time-based blanket suppress, because the keystroke that committed
-    // the composition (typically space) arrives within that same window
-    // and must reach the PTY — otherwise the user has to press space
-    // twice to get a single space after Korean input.
-    let composing = false;
-    let composeBuffer = "";
+    // IME composition tracking. macOS WKWebView fires both
+    // compositionend (with the final composed syllable) AND a delayed
+    // textarea input event that xterm forwards via onData. Without
+    // dedup the PTY receives both → double input.
+    //
+    // Strategy: do NOT suppress onData while composing (that was
+    // eating vowels when WKWebView dropped a compositionend mid-burst
+    // under fast typing). Instead, always emit; on each
+    // compositionend remember the composed string for 400 ms and drop
+    // the next onData burst that exactly matches it.
     let lastComposed = "";
+    let lastComposedAt = 0;
 
     // Immediate, micro-task batched PTY write. The previous RAF-based
     // batch added a 16 ms wait per keystroke, which on top of Wails IPC
@@ -314,21 +314,13 @@
 
     const helper = containerEl.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
     if (helper) {
-      helper.addEventListener("compositionstart", () => {
-        composing = true;
-        composeBuffer = "";
-      });
-      helper.addEventListener("compositionupdate", (e: CompositionEvent) => {
-        composeBuffer = e.data || "";
-      });
       helper.addEventListener("compositionend", (e: CompositionEvent) => {
-        composing = false;
-        const out = e.data || composeBuffer;
-        composeBuffer = "";
+        const out = e.data || "";
         try { helper.value = ""; } catch {}
-        lastComposed = out;
-        if (out) enqueueWrite(out);
-        setTimeout(() => { if (lastComposed === out) lastComposed = ""; }, 350);
+        if (out) {
+          lastComposed = out;
+          lastComposedAt = Date.now();
+        }
       });
     }
 
@@ -337,8 +329,11 @@
     // on Windows WebView2; batching collapses fast-typing / paste /
     // autocomplete bursts into one round-trip without visible latency.
     term.onData((data) => {
-      if (composing) return;
-      if (lastComposed && data === lastComposed) {
+      // Drop the textarea echo that arrives ~immediately after a
+      // compositionend. We do NOT block onData during composition
+      // itself any more — that was losing keystrokes when
+      // WKWebView dropped a compositionend mid-burst.
+      if (lastComposed && data === lastComposed && Date.now() - lastComposedAt < 400) {
         lastComposed = "";
         return;
       }
