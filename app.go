@@ -107,6 +107,39 @@ func (a *App) GetSession(id string) *Session {
 	return nil
 }
 
+// SessionFileStat is a lightweight stat snapshot the frontend polls to
+// detect whether a session JSONL has been mutated by something other
+// than csm's own claude process (e.g. the user resumed the same session
+// in Ghostty / another terminal).
+type SessionFileStat struct {
+	ModTimeUnixNano int64 `json:"modTimeUnixNano"`
+	Size            int64 `json:"size"`
+	Exists          bool  `json:"exists"`
+}
+
+// GetSessionFileStat returns the on-disk mtime/size for a session's
+// JSONL. The frontend snapshots this when a tab starts, then polls
+// periodically; an mtime jump that the tab's PTY didn't cause means an
+// external editor (or another claude process) is touching the file.
+func (a *App) GetSessionFileStat(id string) SessionFileStat {
+	if id == "" {
+		return SessionFileStat{}
+	}
+	s := a.GetSession(id)
+	if s == nil || s.SessionFile == "" {
+		return SessionFileStat{}
+	}
+	info, err := os.Stat(s.SessionFile)
+	if err != nil {
+		return SessionFileStat{Exists: false}
+	}
+	return SessionFileStat{
+		ModTimeUnixNano: info.ModTime().UnixNano(),
+		Size:            info.Size(),
+		Exists:          true,
+	}
+}
+
 // PinSession pins or unpins a session.
 func (a *App) PinSession(id string, pinned bool) error {
 	pins := loadPins()

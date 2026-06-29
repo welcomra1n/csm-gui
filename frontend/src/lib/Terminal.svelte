@@ -8,7 +8,7 @@
   import { ImageAddon } from "@xterm/addon-image";
   import "@xterm/xterm/css/xterm.css";
   import { EventsOn, EventsOff, OnFileDrop, WindowShow } from "../../wailsjs/runtime/runtime.js";
-  import { WritePty, ResizePty, SaveClipboardImage, CopyImageToClipboard } from "../../wailsjs/go/main/App.js";
+  import { WritePty, ResizePty, SaveClipboardImage, CopyImageToClipboard, GetSessionFileStat } from "../../wailsjs/go/main/App.js";
   import { fontSize, activeTabId, tabs, leftWidth, rightWidth, statusText } from "./store";
   import doneSoundUrl from "../assets/done.mp3";
 
@@ -97,6 +97,17 @@
   let resizeTimer: ReturnType<typeof setTimeout> | null = null;
   let lastCols = 0;
   let lastRows = 0;
+
+  // External-write detection. csm tracks the JSONL mtime; if it advances
+  // while no PTY output arrived in a small recent window, something
+  // outside csm (Ghostty, another claude --resume, manual edit) is
+  // touching the file and csm's in-memory state is now stale.
+  let lastSessionMtime = 0;
+  let lastPtyOutputAt = 0;
+  let externallyModified = false;
+  let externalDismissed = false;
+  let extCheckTimer: ReturnType<typeof setInterval> | null = null;
+  $: sessionIdForStat = ($tabs.find((t) => t.id === tabId) || {} as any).sessionId as string | undefined;
 
   function doResize() {
     if (resizeTimer) clearTimeout(resizeTimer);
@@ -589,6 +600,7 @@
     EventsOn(outputEvent, (data: string) => {
       term.write(data);
       const now = Date.now();
+      lastPtyOutputAt = now;
       everWasWorking = true;
       tabs.update((arr) =>
         arr.map((t) => {
@@ -634,12 +646,39 @@
     resizeObserver = new ResizeObserver(() => doResize());
     resizeObserver.observe(containerEl);
     window.addEventListener("resize", doResize);
+
+    // External-write detector. Snapshots the JSONL mtime on first
+    // observation and on every PTY output (claude's own writes settle
+    // ~immediately after output), then polls every 3 s. If the on-disk
+    // mtime is newer than what we've seen AND no PTY output landed in
+    // the last 2 s, someone outside csm wrote to the file.
+    extCheckTimer = setInterval(async () => {
+      if (!sessionIdForStat || externalDismissed) return;
+      try {
+        const stat = await GetSessionFileStat(sessionIdForStat);
+        if (!stat || !stat.exists) return;
+        const mt = stat.modTimeUnixNano;
+        if (lastSessionMtime === 0) {
+          lastSessionMtime = mt;
+          return;
+        }
+        if (mt > lastSessionMtime) {
+          const ourWrite = Date.now() - lastPtyOutputAt < 2000;
+          if (ourWrite) {
+            lastSessionMtime = mt;
+          } else {
+            externallyModified = true;
+          }
+        }
+      } catch {}
+    }, 3000);
   });
 
   onDestroy(() => {
     if (outputUnsubscribe) outputUnsubscribe();
     if (exitUnsubscribe) exitUnsubscribe();
     if (resizeObserver) resizeObserver.disconnect();
+    if (extCheckTimer) clearInterval(extCheckTimer);
     window.removeEventListener("resize", doResize);
     // Do NOT call OnFileDropOff — it clears the global handler, which
     // would deregister other live Terminal instances' callbacks.
@@ -650,6 +689,13 @@
 </script>
 
 <div class="term-wrap-inner">
+  {#if externallyModified}
+    <div class="ext-banner">
+      <span class="ext-icon">⚠</span>
+      <span class="ext-msg">이 세션이 csm 밖에서 수정됨. 이 탭의 화면은 그 변경을 반영하지 못함. 동기화하려면 탭 닫고 다시 열기.</span>
+      <button class="ext-dismiss" on:click={() => { externalDismissed = true; externallyModified = false; }}>닫기</button>
+    </div>
+  {/if}
   <div class="term-container" bind:this={containerEl}></div>
   {#if searchOpen}
     <div class="search-bar">
@@ -704,6 +750,36 @@
     width: 100%;
     height: 100%;
   }
+
+  .ext-banner {
+    position: absolute;
+    top: 6px;
+    left: 12px;
+    right: 12px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    background: rgba(255, 214, 10, 0.08);
+    border: 1px solid var(--accent-pinned, #ffd60a);
+    border-radius: 4px;
+    color: var(--accent-pinned, #ffd60a);
+    font-size: var(--ui-fs-sm);
+    backdrop-filter: blur(4px);
+  }
+  .ext-icon { font-size: 14px; }
+  .ext-msg { flex: 1; line-height: 1.4; color: var(--fg); }
+  .ext-dismiss {
+    background: none;
+    border: 1px solid var(--accent-pinned, #ffd60a);
+    color: var(--accent-pinned, #ffd60a);
+    padding: 3px 10px;
+    border-radius: 3px;
+    font-size: var(--ui-fs-xs);
+    cursor: pointer;
+  }
+  .ext-dismiss:hover { background: rgba(255, 214, 10, 0.15); }
 
   .search-bar {
     position: absolute;
