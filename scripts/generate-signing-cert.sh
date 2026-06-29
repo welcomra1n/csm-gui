@@ -41,7 +41,12 @@ openssl req -new -newkey rsa:2048 -nodes \
   -out cert.pem
 
 # 2. Bundle into a .p12 with a password.
-openssl pkcs12 -export \
+#    -legacy forces RC2 + 3DES + SHA1 inside the PKCS12. Modern openssl
+#    defaults to PBES2 + AES-256 + SHA-256, which the macOS `security`
+#    tool (used by CI to import into a temporary keychain) rejects with
+#    "MAC verification failed". Legacy format is universally readable
+#    by macOS, Windows, and openssl alike.
+openssl pkcs12 -export -legacy \
   -inkey key.pem \
   -in cert.pem \
   -name "$NAME" \
