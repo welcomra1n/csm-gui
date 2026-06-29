@@ -1,12 +1,24 @@
-build/bin
-node_modules
-frontend/dist
-frontend/node_modules
-frontend/wailsjs
-*.log
 .DS_Store
-*.swp
-csm-gui
-csm
-csm.exe
+node_modules
+/build
+/.svelte-kit
+/package
+.env
+.env.*
+!.env.example
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
+
+# Legacy Wails build artifacts
+legacy-wails/build/bin/
+legacy-wails/frontend/node_modules/
+legacy-wails/frontend/dist/
+legacy-wails/frontend/wailsjs/
+legacy-wails/csm-gui
+
+# Local signing cert (never commit private material)
 signing-cert/
