@@ -21,14 +21,18 @@ type ptySession struct {
 	cmd  *gopty.Cmd
 	done chan struct{}
 
-	// Korean jamo coalescer state.
-	// macOS IMEs hand us conjoining Hangul jamo (U+1100..U+11FF) one
-	// rune per WritePty call. NFC over a single jamo is a no-op, so
-	// without batching across calls the PTY receives detached jamo
-	// and the TUI renders them split. We buffer trailing jamo bytes
-	// briefly and flush them composed.
+	// Korean jamo live-preview state.
+	// macOS IMEs hand us conjoining/compat Hangul jamo one rune per
+	// WritePty call. We hold the trailing run of jamo bytes in
+	// jamoBuf, render a best-effort composed preview to the TUI on
+	// every call (so the user sees the syllable immediately), and
+	// erase + re-send it via DEL when more jamo arrives. jamoSent
+	// tracks what is currently displayed in the TUI as our preview
+	// so the next update can backspace exactly that many runes and
+	// not chew into committed text.
 	jamoMu    sync.Mutex
 	jamoBuf   []byte
+	jamoSent  string
 	jamoTimer *time.Timer
 }
 
@@ -175,13 +179,10 @@ func (a *App) ptyWaitLoop(s *ptySession) {
 	wruntime.EventsEmit(a.ctx, "pty:exit:"+s.id)
 }
 
-// Idle window after which an in-progress Hangul syllable is flushed even
-// though more input *could* still extend it. Kept short so the user does
-// not feel typing latency — completed syllables are emitted instantly via
-// the streaming composer; this timer only applies to the single
-// trailing syllable that has not yet acquired enough jamo to be
-// unambiguous (e.g. an LV that might still take a T).
-const jamoFlushMS = 120
+// del is the byte the macOS terminal sends for the Backspace key, and
+// is also what every line-editing TUI (claude / codex / readline / etc.)
+// interprets as "erase the previous rune from the input buffer".
+const del = "\x7f"
 
 // isHangulJamo reports whether r is a Hangul jamo that should be
 // coalesced and composed. Includes:
@@ -221,50 +222,70 @@ func splitTrailingJamo(b []byte) (head, tail []byte) {
 	return b[:i], b[i:]
 }
 
-// flushJamoLocked drains every buffered jamo byte to the PTY,
-// composing whatever syllables it can. Use only on session close /
-// non-jamo arrival / timer expiry; for normal streaming flushes the
-// caller should use streamFlushLocked instead so that the in-progress
-// trailing syllable can stay buffered. Caller must hold s.jamoMu.
-func (s *ptySession) flushJamoLocked() {
-	if len(s.jamoBuf) == 0 {
-		return
+// updateJamoLivePreviewLocked re-renders the in-progress Hangul syllable
+// in the TUI's input buffer. Diffs the new preview against what we last
+// sent (jamoSent), backspaces the differing tail, and writes the new
+// suffix. The TUI sees an instantaneous syllable update on every jamo
+// keystroke instead of waiting for a syllable boundary to flush.
+// Caller must hold s.jamoMu.
+func (s *ptySession) updateJamoLivePreviewLocked() error {
+	var want string
+	if len(s.jamoBuf) > 0 {
+		// Best-effort compose of everything currently in the buffer —
+		// for partial syllables this falls back to the compat-jamo
+		// rendering, which is what the user actually wants to see
+		// while still typing.
+		want = composeJamo(string(s.jamoBuf))
 	}
-	out := composeJamo(string(s.jamoBuf))
+	wantR := []rune(want)
+	sentR := []rune(s.jamoSent)
+	common := 0
+	for common < len(wantR) && common < len(sentR) && wantR[common] == sentR[common] {
+		common++
+	}
+	for i := 0; i < len(sentR)-common; i++ {
+		if _, err := io.WriteString(s.pty, del); err != nil {
+			return err
+		}
+	}
+	if common < len(wantR) {
+		if _, err := io.WriteString(s.pty, string(wantR[common:])); err != nil {
+			return err
+		}
+	}
+	s.jamoSent = want
+	return nil
+}
+
+// commitJamoLocked freezes whatever is currently shown in the TUI as
+// our jamo preview — the user typed something non-jamo (Enter, space,
+// arrow key) or the session is closing, so the preview becomes
+// permanent. We don't backspace anything; we just stop tracking the
+// preview so future jamo input doesn't try to erase committed text.
+// Caller must hold s.jamoMu.
+func (s *ptySession) commitJamoLocked() {
 	s.jamoBuf = s.jamoBuf[:0]
+	s.jamoSent = ""
 	if s.jamoTimer != nil {
 		s.jamoTimer.Stop()
 		s.jamoTimer = nil
 	}
-	io.WriteString(s.pty, out)
 }
 
-// streamFlushLocked emits every syllable that the streaming composer is
-// already certain about, keeping the trailing in-progress syllable in
-// the buffer for future input to extend. Caller must hold s.jamoMu.
-func (s *ptySession) streamFlushLocked() {
-	if len(s.jamoBuf) == 0 {
-		return
-	}
-	composed, pending := composeHangulJamoStreaming(string(s.jamoBuf))
-	if composed != "" {
-		io.WriteString(s.pty, composed)
-	}
-	s.jamoBuf = append(s.jamoBuf[:0], []byte(pending)...)
+// flushJamoLocked is retained for KillPty's safety-net flush. Live
+// preview mode means there's nothing pending to commit at teardown
+// (the syllable is already on screen), so this is now equivalent to
+// commitJamoLocked.
+func (s *ptySession) flushJamoLocked() {
+	s.commitJamoLocked()
 }
 
-// WritePty sends input bytes to the PTY's stdin.
-//
-// Two-stage normalisation:
-//  1. NFC-normalise the incoming payload so any decomposed Hangul that
-//     already arrived as a single chunk (paste, compositionend) is
-//     composed before reaching the shell.
-//  2. Coalesce trailing conjoining jamo across consecutive calls. macOS
-//     IMEs hand us one jamo per keystroke; NFC over a single rune is a
-//     no-op, so without buffering the TUI sees and renders detached
-//     jamo. We hold any jamo tail for jamoFlushMS, append future jamo
-//     calls to it, and flush composed once a non-jamo byte arrives or
-//     the timer fires.
+// WritePty sends input bytes to the PTY's stdin. Korean typing uses a
+// live-preview model: every jamo keystroke updates the TUI's in-progress
+// syllable in place via DEL + re-write. There is no latency, no idle
+// timer — what the user sees in claude/codex matches their keypress
+// instantaneously, and the syllable becomes permanent the moment any
+// non-jamo byte arrives (Enter, space, arrow, etc.).
 func (a *App) WritePty(tabId string, data string) error {
 	a.ptyMgr.mu.Lock()
 	s, ok := a.ptyMgr.sessions[tabId]
@@ -279,21 +300,12 @@ func (a *App) WritePty(tabId string, data string) error {
 	s.jamoMu.Lock()
 	defer s.jamoMu.Unlock()
 
-	// Any non-jamo prefix flushes the buffered jamo first, then writes
-	// the prefix immediately so control chars / Enter / ESC sequences
-	// keep their original latency.
 	if len(head) > 0 {
-		if len(s.jamoBuf) > 0 {
-			out := composeJamo(string(s.jamoBuf))
-			s.jamoBuf = s.jamoBuf[:0]
-			if s.jamoTimer != nil {
-				s.jamoTimer.Stop()
-				s.jamoTimer = nil
-			}
-			if _, err := io.WriteString(s.pty, out); err != nil {
-				return err
-			}
-		}
+		// Anything non-jamo means the trailing syllable is final;
+		// "commit" it (drop our preview tracking, keep what's on
+		// screen) and then write head untouched so control chars
+		// stay zero-latency.
+		s.commitJamoLocked()
 		if _, err := s.pty.Write(head); err != nil {
 			return err
 		}
@@ -301,20 +313,8 @@ func (a *App) WritePty(tabId string, data string) error {
 
 	if len(tail) > 0 {
 		s.jamoBuf = append(s.jamoBuf, tail...)
-		// Emit every syllable the streaming composer can prove is
-		// complete; only the trailing in-progress syllable stays.
-		s.streamFlushLocked()
-		if s.jamoTimer != nil {
-			s.jamoTimer.Stop()
-		}
-		// Safety net: if no more input arrives, flush whatever pending
-		// half-syllable is sitting in the buffer after the idle window.
-		if len(s.jamoBuf) > 0 {
-			s.jamoTimer = time.AfterFunc(jamoFlushMS*time.Millisecond, func() {
-				s.jamoMu.Lock()
-				defer s.jamoMu.Unlock()
-				s.flushJamoLocked()
-			})
+		if err := s.updateJamoLivePreviewLocked(); err != nil {
+			return err
 		}
 	}
 	return nil
