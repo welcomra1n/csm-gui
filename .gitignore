@@ -12,6 +12,10 @@ vite.config.ts.timestamp-*
 # Tauri / Rust
 src-tauri/target/
 src-tauri/gen/
+core/target/
+mac/.build/
+mac/Sources/csm-mac/.build/
+**/Package.resolved
 
 # Legacy Wails build artifacts
 legacy-wails/build/bin/

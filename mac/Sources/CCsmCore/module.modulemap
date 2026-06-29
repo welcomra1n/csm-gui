@@ -1,0 +1,5 @@
+module CCsmCore {
+    header "csm_core.h"
+    link "csm_core"
+    export *
+}
