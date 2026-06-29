@@ -285,7 +285,14 @@
     let composeBuffer = "";
     let lastComposed = "";
 
-    // Batched PTY write — see term.onData below for rationale.
+    // Immediate, micro-task batched PTY write. The previous RAF-based
+    // batch added a 16 ms wait per keystroke, which on top of Wails IPC
+    // (~5–15 ms) made Korean live-preview typing feel sluggish compared
+    // with native terminals like Ghostty. queueMicrotask collapses
+    // multiple enqueueWrite calls inside the same synchronous task
+    // (e.g. composition burst that fires several onData events
+    // back-to-back) into one WritePty round-trip without waiting a
+    // full frame.
     let writeBuf = "";
     let writeScheduled = false;
     function flushWrite() {
@@ -296,14 +303,11 @@
       WritePty(tabId, out).catch((e) => console.warn("write pty:", e));
     }
     function enqueueWrite(s: string) {
-      // NFC-normalise here as well as in Go WritePty: catches Korean jamo
-      // that comes from IME compositionend / paste paths before any caller
-      // can route around the Go boundary.
       try { s = s.normalize("NFC"); } catch {}
       writeBuf += s;
       if (!writeScheduled) {
         writeScheduled = true;
-        requestAnimationFrame(flushWrite);
+        queueMicrotask(flushWrite);
       }
     }
     enqueueWriteExternal = enqueueWrite;
