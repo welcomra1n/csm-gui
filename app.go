@@ -690,45 +690,100 @@ func (a *App) AppVersion() string {
 }
 
 // WhatsNewInfo carries the release notes payload shown after an update.
-// Body is the raw GitHub release markdown; the frontend renders it.
+// Body is the summarised release notes; the frontend renders it as plain
+// text. When HasUpdate is true, the modal also shows a primary action
+// that calls ApplyUpdate; LatestVersion is what would be installed.
 type WhatsNewInfo struct {
-	Version string `json:"version"`
-	Body    string `json:"body"`
-	URL     string `json:"url"`
+	Version       string `json:"version"`
+	Body          string `json:"body"`
+	URL           string `json:"url"`
+	HasUpdate     bool   `json:"hasUpdate"`
+	LatestVersion string `json:"latestVersion,omitempty"`
+	LatestURL     string `json:"latestUrl,omitempty"`
 }
 
-// WhatsNew returns release notes for the current build the first time it
-// runs after an upgrade. Returns nil once the user has acknowledged the
-// notes (Acknowledge) or if the build version matches what we last saw.
-// "dev" builds never trigger a notes payload.
+// WhatsNew returns release notes plus an optional update offer.
+// Shows when either:
+//  1. The current build's version has not been acknowledged yet (post-
+//     upgrade notes), OR
+//  2. A newer release exists upstream (offer to upgrade).
+//
+// In case (2) the notes shown are for the LATEST version, and HasUpdate
+// is true so the frontend can render an "Update" button. "dev" builds
+// never trigger a payload.
 func (a *App) WhatsNew() (*WhatsNewInfo, error) {
 	current := strings.TrimPrefix(a.AppVersion(), "v")
 	if current == "" || current == "dev" {
 		return nil, nil
 	}
 	meta := loadMetadata()
-	if meta.LastSeenVersion == current {
-		return nil, nil
-	}
-	resp, err := httpGet("https://api.github.com/repos/welcomra1n/csm-gui/releases/tags/v" + current)
+	acknowledged := meta.LastSeenVersion == current
+
+	// Always check upstream so we can detect a pending update even after
+	// the current build's notes were acknowledged.
+	latestResp, err := httpGet("https://api.github.com/repos/welcomra1n/csm-gui/releases/latest")
 	if err != nil {
+		if acknowledged {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("network: %w", err)
 	}
-	var raw struct {
+	var latest struct {
 		TagName string `json:"tag_name"`
 		HTMLURL string `json:"html_url"`
 		Body    string `json:"body"`
 	}
-	if err := jsonUnmarshal(resp, &raw); err != nil {
+	if err := jsonUnmarshal(latestResp, &latest); err != nil {
+		if acknowledged {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("parse: %w", err)
 	}
-	if raw.TagName == "" {
+	latestVer := strings.TrimPrefix(latest.TagName, "v")
+	hasUpdate := latestVer != "" && latestVer != current
+
+	// If neither condition fires, no modal.
+	if acknowledged && !hasUpdate {
 		return nil, nil
 	}
+
+	// Pick which release's notes to show. If an update is available,
+	// show the latest's notes so the user can see what they're about to
+	// install; otherwise show the current build's post-upgrade notes.
+	showTag := "v" + current
+	showBody := ""
+	showURL := ""
+	if hasUpdate {
+		showTag = latest.TagName
+		showBody = summariseReleaseBody(latest.Body)
+		showURL = latest.HTMLURL
+	} else {
+		resp, err := httpGet("https://api.github.com/repos/welcomra1n/csm-gui/releases/tags/" + showTag)
+		if err != nil {
+			return nil, fmt.Errorf("network: %w", err)
+		}
+		var raw struct {
+			TagName string `json:"tag_name"`
+			HTMLURL string `json:"html_url"`
+			Body    string `json:"body"`
+		}
+		if err := jsonUnmarshal(resp, &raw); err != nil {
+			return nil, fmt.Errorf("parse: %w", err)
+		}
+		if raw.TagName == "" {
+			return nil, nil
+		}
+		showBody = summariseReleaseBody(raw.Body)
+		showURL = raw.HTMLURL
+	}
+
 	return &WhatsNewInfo{
-		Version: current,
-		Body:    summariseReleaseBody(raw.Body),
-		URL:     raw.HTMLURL,
+		Version:       current,
+		Body:          showBody,
+		URL:           showURL,
+		HasUpdate:     hasUpdate,
+		LatestVersion: latestVer,
+		LatestURL:     latest.HTMLURL,
 	}, nil
 }
 

@@ -8,17 +8,31 @@
   import PermissionsModal from "./lib/PermissionsModal.svelte";
   import CommandPalette from "./lib/CommandPalette.svelte";
   import type { PaletteCommand } from "./lib/CommandPalette.svelte";
-  import { AppVersion, WhatsNew, AcknowledgeVersion } from "../wailsjs/go/main/App.js";
+  import { AppVersion, WhatsNew, AcknowledgeVersion, ApplyUpdate } from "../wailsjs/go/main/App.js";
 
   let settingsOpen = false;
   let permsOpen = false;
   let paletteOpen = false;
   let updateToast: string | null = null;
-  let whatsNew: { version: string; body: string; url: string } | null = null;
+  let whatsNew: { version: string; body: string; url: string; hasUpdate?: boolean; latestVersion?: string; latestUrl?: string } | null = null;
+  let updating = false;
 
   async function dismissWhatsNew() {
     whatsNew = null;
     try { await AcknowledgeVersion(); } catch {}
+  }
+
+  async function applyUpdateNow() {
+    if (updating) return;
+    updating = true;
+    try {
+      const msg = await ApplyUpdate();
+      updateToast = msg || "업데이트 중…";
+    } catch (e: any) {
+      updateToast = `업데이트 실패: ${e?.message || e}`;
+      updating = false;
+      setTimeout(() => { updateToast = null; }, 6000);
+    }
   }
 
   function buildPaletteCommands(): PaletteCommand[] {
@@ -295,18 +309,33 @@
     <div class="whatsnew" role="dialog" aria-modal="true">
       <header>
         <div class="title">
-          <span class="badge">UPDATED</span>
-          <span>v{whatsNew.version} · 변경 사항</span>
+          {#if whatsNew.hasUpdate}
+            <span class="badge update">UPDATE</span>
+            <span>v{whatsNew.latestVersion} 사용 가능</span>
+          {:else}
+            <span class="badge">UPDATED</span>
+            <span>v{whatsNew.version} · 변경 사항</span>
+          {/if}
         </div>
         <button class="close" on:click={dismissWhatsNew} title="닫기">×</button>
       </header>
       <div class="body">
         <pre>{whatsNew.body}</pre>
       </div>
-      <footer>
-        <a class="link" href={whatsNew.url} target="_blank" rel="noopener">GitHub 릴리스 ↗</a>
-        <button class="ok" on:click={dismissWhatsNew}>확인</button>
-      </footer>
+      {#if whatsNew.hasUpdate}
+        <div class="cta">
+          <button class="primary" on:click={applyUpdateNow} disabled={updating}>
+            {updating ? "업데이트 중…" : `v${whatsNew.latestVersion}로 업데이트`}
+          </button>
+          <button class="secondary-link" on:click={dismissWhatsNew}>업데이트 없이 계속하기</button>
+          <a class="link tiny" href={whatsNew.url} target="_blank" rel="noopener">GitHub 릴리스 ↗</a>
+        </div>
+      {:else}
+        <footer>
+          <a class="link" href={whatsNew.url} target="_blank" rel="noopener">GitHub 릴리스 ↗</a>
+          <button class="ok" on:click={dismissWhatsNew}>확인</button>
+        </footer>
+      {/if}
     </div>
   </div>
 {/if}
@@ -719,6 +748,49 @@
     cursor: pointer;
   }
   .whatsnew .ok:hover { box-shadow: 0 0 8px rgba(0, 255, 102, 0.5); }
+  .whatsnew .badge.update {
+    background: #ffd60a;
+    color: #000;
+  }
+  .whatsnew .cta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px 16px;
+    border-top: 1px solid var(--border, #222);
+  }
+  .whatsnew .primary {
+    width: 100%;
+    background: var(--accent-claude, #00ff66);
+    color: #000;
+    border: 0;
+    padding: 10px 16px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    letter-spacing: 0.3px;
+  }
+  .whatsnew .primary:hover:not(:disabled) {
+    box-shadow: 0 0 12px rgba(0, 255, 102, 0.55);
+  }
+  .whatsnew .primary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .whatsnew .secondary-link {
+    background: none;
+    border: 0;
+    color: var(--fg-mute);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 4px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .whatsnew .secondary-link:hover { color: var(--fg); }
+  .whatsnew .link.tiny { font-size: 10px; opacity: 0.7; }
 
   .toast {
     position: fixed;
