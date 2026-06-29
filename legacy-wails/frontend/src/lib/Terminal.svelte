@@ -242,15 +242,10 @@
 
     term.open(containerEl);
 
-    // WebGL renderer for GPU-accelerated drawing. Falls back silently on
-    // hardware that does not support it (older Intel macs without WebGL2).
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      term.loadAddon(webgl);
-    } catch (e) {
-      console.warn("webgl addon:", e);
-    }
+    // WebGL renderer disabled: under WKWebView it interferes with the
+    // xterm helper textarea's IME composition events, breaking Korean
+    // input (only initial jamo survive). v0.8.0 did not load this addon
+    // and IME worked perfectly there.
 
     // Auto-copy selected text to OS clipboard
     term.onSelectionChange(() => {
