@@ -210,14 +210,20 @@
     // because xterm.js sends it as literal ^V; on macOS we let xterm/WKWebView
     // handle Cmd+V natively to avoid the WKWebView clipboard permission prompt
     // that fires on every navigator.clipboard.readText() call.
+    // attachCustomKeyEventHandler is only installed on Windows. On macOS
+    // it is omitted entirely because v0.8.0 — which had no such handler —
+    // had perfect IME, and adding any keydown interceptor (even a
+    // pass-through) breaks the WKWebView helper-textarea composition
+    // path and causes Korean input to lose all but the leading jamo.
     const isWindows = navigator.platform.toLowerCase().includes("win");
-    term.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
-      if (ev.type !== "keydown") return true;
-      if (ev.key === "Tab") {
-        ev.preventDefault();
-        return true;
-      }
-      if (isWindows) {
+    if (isWindows) {
+      term.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
+        if (ev.type !== "keydown") return true;
+        if (ev.isComposing || ev.keyCode === 229) return true;
+        if (ev.key === "Tab") {
+          ev.preventDefault();
+          return true;
+        }
         const mod = ev.ctrlKey;
         if (mod && !ev.shiftKey && !ev.altKey && (ev.key === "v" || ev.key === "V")) {
           ev.preventDefault();
@@ -236,9 +242,9 @@
             return false;
           }
         }
-      }
-      return true;
-    });
+        return true;
+      });
+    }
 
     term.open(containerEl);
 
